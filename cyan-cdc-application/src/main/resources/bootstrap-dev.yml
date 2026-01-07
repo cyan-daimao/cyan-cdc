@@ -19,4 +19,4 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: root
     password: 627459859@qq.com
-    url: jdbc:mysql://10.0.0.2:3306/cyan_honeycomb
+    url: jdbc:mysql://10.0.0.2:3306/cyan_cdc

@@ -1,4 +1,4 @@
-package com.cyan;
+package com.cyan.cdc;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -14,7 +14,8 @@ import org.springframework.context.annotation.ComponentScan;
  */
 @SpringBootApplication
 @EnableDiscoveryClient
-@EnableFeignClients(basePackages = "com.cyan.employee.client") // 指向EmployeeRPCClient所在包
+@ComponentScan(basePackages = {"com.cyan"})
+@EnableFeignClients(basePackages = "com.cyan.cdc.client") // 指向EmployeeRPCClient所在包
 public class Application {
     public static void main(String[] args) {
         SpringApplication.run(Application.class, args);

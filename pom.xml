@@ -4,14 +4,49 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.qlchat</groupId>
+    <groupId>com.cyan</groupId>
     <artifactId>cyan-cdc</artifactId>
     <version>1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <modules>
+        <module>cyan-cdc-application</module>
+        <module>cyan-cdc-client</module>
+    </modules>
 
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <cyan-bigdata-base.version>1.0-SNAPSHOT</cyan-bigdata-base.version>
+        <arch.version>1.0-SNAPSHOT</arch.version>
+        <cyan-cdc.version>1.0-SNAPSHOT</cyan-cdc.version>
     </properties>
-    
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.cyan</groupId>
+                <artifactId>cyan-bigdata</artifactId>
+                <version>${cyan-bigdata-base.version}</version>
+                <scope>import</scope>
+                <type>pom</type>
+            </dependency>
+
+            <dependency>
+                <groupId>com.cyan</groupId>
+                <artifactId>arch</artifactId>
+                <version>${arch.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>com.cyan</groupId>
+                <artifactId>cyan-cdc-client</artifactId>
+                <version>1.0-SNAPSHOT</version>
+            </dependency>
+
+        </dependencies>
+
+    </dependencyManagement>
 </project>
