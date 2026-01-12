@@ -20,3 +20,6 @@ spring:
     username: root
     password: 627459859@qq.com
     url: jdbc:mysql://10.0.0.2:3306/cyan_cdc
+
+kafka:
+  url: 10.0.0.2:9092
