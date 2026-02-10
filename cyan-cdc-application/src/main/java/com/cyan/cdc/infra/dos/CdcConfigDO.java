@@ -92,6 +92,18 @@ public class CdcConfigDO {
     private String msg;
 
     /**
+     * debezium的server-id
+     */
+    @TableField(value = "server_id")
+    private Integer serverId;
+
+    /**
+     * debezium的连接器名称(唯一)
+     */
+    @TableField(value = "connector_name")
+    private String connectorName;
+
+    /**
      * 创建时间
      */
     @TableField(value = "created_at")

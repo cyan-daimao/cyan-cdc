@@ -2,6 +2,7 @@ package com.cyan.cdc.app.service;
 
 import com.cyan.cdc.app.bo.CdcConfigBO;
 import com.cyan.cdc.app.cmd.CDCConfigCmd;
+import com.cyan.cdc.domain.query.CdcConfigListQuery;
 
 import java.util.List;
 
@@ -20,7 +21,7 @@ public interface CdcConfigQueryService {
     /**
      * 查询所有 cdc-config
      */
-    List<CdcConfigBO> list();
+    List<CdcConfigBO> list(CdcConfigListQuery query);
 
     /**
      * 回显cdc配置信息

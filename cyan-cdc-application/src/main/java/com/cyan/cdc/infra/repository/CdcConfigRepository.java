@@ -1,6 +1,7 @@
 package com.cyan.cdc.infra.repository;
 
 import com.cyan.cdc.domain.CdcConfig;
+import com.cyan.cdc.domain.query.CdcConfigListQuery;
 
 import java.util.List;
 
@@ -32,7 +33,7 @@ public interface CdcConfigRepository {
      *
      * @return cdc信息
      */
-    List<CdcConfig> list();
+    List<CdcConfig> list(CdcConfigListQuery query);
 
     /**
      * 更新cdc信息
@@ -40,4 +41,10 @@ public interface CdcConfigRepository {
      * @param cdcConfig cdc信息
      */
     void update(CdcConfig cdcConfig);
+
+    /**
+     * 删除cdc信息
+     * @param id 主键
+     */
+    void delete(String id);
 }

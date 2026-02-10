@@ -16,7 +16,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
 @SpringBootApplication
 @EnableDiscoveryClient
 @ComponentScan(basePackages = {"com.cyan"})
-@EnableFeignClients(basePackages = "com.cyan.cdc.client")
+@EnableFeignClients(basePackages = "com.cyan.cdc")
 @EnableAsync
 public class Application {
     public static void main(String[] args) {

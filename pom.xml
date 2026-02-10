@@ -67,4 +67,53 @@
         </dependencies>
 
     </dependencyManagement>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.8.1</version> <!-- 适配你的JDK版本，无需严格一致 -->
+                <configuration>
+                    <source>21</source>
+                    <target>21</target>
+                    <compilerArgs>
+                        <arg>-parameters</arg> <!-- 关键：保留参数名反射信息 -->
+                    </compilerArgs>
+                </configuration>
+            </plugin>
+
+            <!-- 打包源代码（含注释） -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+                <version>3.3.0</version> <!-- 推荐最新稳定版 -->
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <goals>
+                            <goal>jar-no-fork</goal> <!-- 不触发额外编译，直接打包源码 -->
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+
+    <!-- 核心：添加部署仓库配置 -->
+    <distributionManagement>
+        <!-- 正式版仓库（对应Nexus的maven-releases） -->
+        <repository>
+            <id>maven-releases</id>
+            <name>Nexus Releases Repository</name>
+            <url>http://10.0.0.2:20010/repository/maven-releases/</url>
+        </repository>
+        <!-- 快照版仓库（对应Nexus的maven-snapshots） -->
+        <snapshotRepository>
+            <id>maven-snapshots</id>
+            <name>Nexus Snapshots Repository</name>
+            <url>http://10.0.0.2:20010/repository/maven-snapshots/</url>
+        </snapshotRepository>
+    </distributionManagement>
 </project>

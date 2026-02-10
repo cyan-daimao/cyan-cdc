@@ -5,6 +5,7 @@ import com.cyan.cdc.app.cmd.CDCConfigCmd;
 import com.cyan.cdc.app.convert.CdcConfigAppConvert;
 import com.cyan.cdc.app.service.CdcConfigQueryService;
 import com.cyan.cdc.domain.CdcConfig;
+import com.cyan.cdc.domain.query.CdcConfigListQuery;
 import com.cyan.cdc.infra.repository.CdcConfigRepository;
 import org.springframework.stereotype.Service;
 
@@ -40,8 +41,8 @@ public class CdcConfigQueryServiceImpl implements CdcConfigQueryService {
      * 查询所有 cdc-config
      */
     @Override
-    public List<CdcConfigBO> list() {
-        List<CdcConfig> cdcConfigs = cdcConfigRepository.list();
+    public List<CdcConfigBO> list(CdcConfigListQuery query) {
+        List<CdcConfig> cdcConfigs = cdcConfigRepository.list(query);
         return Optional.ofNullable(cdcConfigs).orElse(List.of()).stream().map(CdcConfigAppConvert.INSTANCE::toDatasourceInfoBO).toList();
     }
 

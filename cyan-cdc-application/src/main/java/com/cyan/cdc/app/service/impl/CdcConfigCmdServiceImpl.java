@@ -6,13 +6,16 @@ import com.cyan.arch.common.util.StrUtils;
 import com.cyan.cdc.app.bo.CdcConfigBO;
 import com.cyan.cdc.app.cmd.CDCConfigCmd;
 import com.cyan.cdc.app.cmd.CDCStartCmd;
+import com.cyan.cdc.app.cmd.CdcDeleteCmd;
 import com.cyan.cdc.app.convert.CdcConfigAppConvert;
 import com.cyan.cdc.app.service.CdcConfigCmdService;
+import com.cyan.cdc.app.service.CdcConfigQueryService;
 import com.cyan.cdc.app.service.CdcService;
 import com.cyan.cdc.client.enums.DatasourceType;
 import com.cyan.cdc.client.enums.RunningStatus;
 import com.cyan.cdc.domain.CdcConfig;
 import com.cyan.cdc.infra.repository.CdcConfigRepository;
+import com.cyan.cdc.infra.rpc.DebeziumRPC;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,10 +36,14 @@ public class CdcConfigCmdServiceImpl implements CdcConfigCmdService {
 
     private final CdcConfigRepository cdcConfigRepository;
     private final Map<DatasourceType, CdcService> cdcServiceMap = new EnumMap<>(DatasourceType.class);
+    private final DebeziumRPC debeziumRPC;
+    private final CdcConfigQueryService cdcConfigQueryService;
 
-    public CdcConfigCmdServiceImpl(CdcConfigRepository cdcConfigRepository, List<CdcService> cdcServices) {
+    public CdcConfigCmdServiceImpl(CdcConfigRepository cdcConfigRepository, List<CdcService> cdcServices, DebeziumRPC debeziumRPC, CdcConfigQueryService cdcConfigQueryService) {
         this.cdcConfigRepository = cdcConfigRepository;
         Optional.ofNullable(cdcServices).orElse(List.of()).forEach(cdcService -> cdcServiceMap.put(cdcService.getDatasourceType(), cdcService));
+        this.debeziumRPC = debeziumRPC;
+        this.cdcConfigQueryService = cdcConfigQueryService;
     }
 
     /**
@@ -44,9 +51,9 @@ public class CdcConfigCmdServiceImpl implements CdcConfigCmdService {
      */
     @Override
     public CdcConfigBO save(CDCConfigCmd cmd) {
-        CdcConfig CDCConfig = CdcConfigAppConvert.INSTANCE.toDatasourceInfo(cmd);
-        CDCConfig = CDCConfig.save(cdcConfigRepository);
-        return CdcConfigAppConvert.INSTANCE.toDatasourceInfoBO(CDCConfig);
+        CdcConfig cdcConfig = CdcConfigAppConvert.INSTANCE.toDatasourceInfo(cmd);
+        cdcConfig = cdcConfig.save(cdcConfigRepository);
+        return CdcConfigAppConvert.INSTANCE.toDatasourceInfoBO(cdcConfig);
     }
 
     /**
@@ -67,12 +74,6 @@ public class CdcConfigCmdServiceImpl implements CdcConfigCmdService {
     @Override
     public void start(CDCStartCmd cmd) {
         CdcConfig cdcConfig = cdcConfigRepository.queryById(cmd.getId());
-        if (cdcConfig == null) {
-            throw new SilentException("cdc-config不存在");
-        }
-        if (cdcConfig.getRunningStatus() == RunningStatus.RUNNING) {
-            throw new SilentException("cdc任务正在运行中");
-        }
         //启动cdc任务
         cdcServiceMap.get(cdcConfig.getDatasourceType()).start(cmd.getId());
     }
@@ -111,5 +112,16 @@ public class CdcConfigCmdServiceImpl implements CdcConfigCmdService {
         cdcConfig.setRunningStatus(status)
                 .setMsg(msg);
         cdcConfig.update(cdcConfigRepository);
+    }
+
+    /**
+     * 删除cdc任务
+     *
+     */
+    @Override
+    public void delete(CdcDeleteCmd cmd) {
+        CdcConfigBO cdcConfigBO = cdcConfigQueryService.queryById(cmd.getId());
+        debeziumRPC.deleteConnector(cdcConfigBO.getConnectorName());
+        cdcConfigRepository.delete(cmd.getId());
     }
 }

@@ -7,7 +7,7 @@ import com.cyan.cdc.app.service.CdcConfigQueryService;
 import com.cyan.cdc.app.service.CdcService;
 import com.cyan.cdc.client.enums.DatasourceType;
 import com.cyan.cdc.client.enums.RunningStatus;
-import com.cyan.cdc.infra.utils.DebeziumUtil;
+import com.cyan.cdc.infra.rpc.DebeziumRPC;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -24,13 +24,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class CdcMysqlServiceImpl implements CdcService {
 
     private final CdcConfigQueryService cdcConfigQueryService;
-    private final DebeziumUtil debeziumUtil;
     private final CdcConfigCmdService cDCConfigCmdService;
+    private final DebeziumRPC debeziumRPC;
 
-    public CdcMysqlServiceImpl(CdcConfigQueryService cdcConfigQueryService, DebeziumUtil debeziumUtil,@Lazy CdcConfigCmdService cDCConfigCmdService) {
+    public CdcMysqlServiceImpl(CdcConfigQueryService cdcConfigQueryService, @Lazy CdcConfigCmdService cDCConfigCmdService, DebeziumRPC debeziumRPC) {
         this.cdcConfigQueryService = cdcConfigQueryService;
-        this.debeziumUtil = debeziumUtil;
         this.cDCConfigCmdService = cDCConfigCmdService;
+        this.debeziumRPC = debeziumRPC;
     }
 
     /**
@@ -46,7 +46,7 @@ public class CdcMysqlServiceImpl implements CdcService {
             throw new SilentException(id + ":cdc-配置信息不存在");
         }
         try {
-            debeziumUtil.start(cdcConfigBO.getName(), cdcConfigBO.getHostname(), cdcConfigBO.getPort(), cdcConfigBO.getUsername(), cdcConfigBO.getPassword(), cdcConfigBO.getDb(), cdcConfigBO.getTbl());
+            debeziumRPC.startConnector(cdcConfigBO.getConnectorName());
             //修改为运行状态
             cDCConfigCmdService.updateStatus(id, RunningStatus.RUNNING, null);
         } catch (Exception e) {
@@ -75,6 +75,12 @@ public class CdcMysqlServiceImpl implements CdcService {
         if (cdcConfigBO == null) {
             throw new SilentException(id + ":cdc-配置信息不存在");
         }
-        debeziumUtil.shutdownCDC(cdcConfigBO.getName(), cdcConfigBO.getDb(), cdcConfigBO.getTbl());
+        try {
+            debeziumRPC.startConnector(cdcConfigBO.getConnectorName());
+            //修改为运行状态
+            cDCConfigCmdService.updateStatus(id, RunningStatus.STOP, null);
+        } catch (Exception e) {
+            cDCConfigCmdService.updateStatus(id, RunningStatus.ERROR, e.getMessage());
+        }
     }
 }

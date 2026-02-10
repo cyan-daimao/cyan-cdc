@@ -1,6 +1,7 @@
 package com.cyan.cdc.app.bo;
 
 import com.cyan.cdc.client.enums.DatasourceType;
+import com.cyan.cdc.client.enums.RunningStatus;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -63,9 +64,24 @@ public class CdcConfigBO {
     private String password;
 
     /**
+     * 运行状态
+     */
+    private RunningStatus runningStatus;
+
+    /**
      * 错误信息
      */
     private String msg;
+
+    /**
+     * debezium服务id
+     */
+    private Integer serverId;
+
+    /**
+     * debezium服务连接器名称
+     */
+    private String connectorName;
 
     /**
      * 创建时间

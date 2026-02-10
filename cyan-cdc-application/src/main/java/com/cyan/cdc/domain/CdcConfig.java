@@ -77,6 +77,16 @@ public class CdcConfig {
     private String msg;
 
     /**
+     * debezium服务id
+     */
+    private Integer serverId;
+
+    /**
+     * debezium服务连接器名称
+     */
+    private String connectorName;
+
+    /**
      * 创建时间
      */
     private LocalDateTime createdAt;

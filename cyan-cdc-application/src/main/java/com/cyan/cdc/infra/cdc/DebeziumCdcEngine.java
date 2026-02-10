@@ -1,4 +1,4 @@
-package com.cyan.cdc.infra.utils;
+package com.cyan.cdc.infra.cdc;
 
 import com.cyan.arch.common.api.SilentException;
 import io.debezium.config.Configuration;
@@ -7,6 +7,7 @@ import io.debezium.engine.DebeziumEngine;
 import io.debezium.engine.RecordChangeEvent;
 import io.debezium.engine.format.ChangeEventFormat;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,7 +24,7 @@ import java.util.concurrent.Executors;
  */
 @Component
 @Slf4j
-public class DebeziumUtil {
+public class DebeziumCdcEngine {
 
     @Value("${kafka.url}")
     private String kafkaUrl;
@@ -57,7 +58,7 @@ public class DebeziumUtil {
                     try {
                         SourceRecord sourceRecord = recordChangeEvent.record();
                         log.info("收到 CDC 记录：topic={}, partition={}", sourceRecord.topic(), sourceRecord.kafkaPartition());
-                        handleChangeEvent(sourceRecord);
+                        handleChangeEvent(sourceRecord, db);
                     } catch (Exception e) {
                         log.error("处理CDC数据失败", e);
                     }
@@ -136,7 +137,7 @@ public class DebeziumUtil {
      */
     private Configuration configuration(String name, String hostname, String port, String user, String password, String db, String tbl) {
         String uid = getUid(name, db, tbl);
-        String topic = "mysql_cdc_%s.%s.%s".formatted(name, db, tbl);
+        String topic = "mysql_cdc_.%s.%s".formatted(db, tbl);
         // 定义 offset 存储的 topic 名称（全局配置用）
         String offsetTopic = "debezium-global-offsets";
         // 定义当前连接器专属的 offset topic（避免多实例冲突）
@@ -195,13 +196,26 @@ public class DebeziumUtil {
     /**
      * 解析并打印 CDC 变更数据
      */
-    private void handleChangeEvent(SourceRecord sourceRecord) {
+    private void handleChangeEvent(SourceRecord sourceRecord, String db) {
         Object valueObj = sourceRecord.value();
         if (!(valueObj instanceof Struct value)) {
             log.warn("非结构化数据，跳过：{}", valueObj);
             return;
         }
-
+        boolean isDDL = false;
+        for (Field field : value.schema().fields()) {
+//            log.info("字段名：{} | 字段类型：{} | 字段值：{}", field.name(), field.schema().type(), value.get(field));
+            if ("databaseName".equals(field.name()) && !db.equals(value.get(field))) {
+                return;
+            }
+            if ("ddl".equals(field.name())) {
+                isDDL = true;
+            }
+        }
+        if (isDDL) {
+            log.info("DDL语句：{}", value.getString("ddl"));
+            return;
+        }
         // 操作类型：c=新增，u=更新，d=删除，r=快照
         String op = value.getString("op");
         Struct source = value.getStruct("source");
@@ -210,7 +224,7 @@ public class DebeziumUtil {
         }
 
         // 解析库名、表名、时间戳
-        String db = source.getString("db");
+//        String db = source.getString("db");
         String table = source.getString("table");
         Long ts = source.getInt64("ts_ms");
         // 解析变更前后数据
@@ -226,6 +240,8 @@ public class DebeziumUtil {
         if (after != null) log.info("变更后数据：{}", after);
         System.out.println("监控数据:" + sourceRecord);
         log.info("=====================================\n");
+
+        return;
     }
 
     /**

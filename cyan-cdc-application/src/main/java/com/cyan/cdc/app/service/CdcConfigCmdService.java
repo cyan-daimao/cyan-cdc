@@ -3,6 +3,7 @@ package com.cyan.cdc.app.service;
 import com.cyan.cdc.app.bo.CdcConfigBO;
 import com.cyan.cdc.app.cmd.CDCConfigCmd;
 import com.cyan.cdc.app.cmd.CDCStartCmd;
+import com.cyan.cdc.app.cmd.CdcDeleteCmd;
 import com.cyan.cdc.client.enums.RunningStatus;
 
 /**
@@ -40,4 +41,9 @@ public interface CdcConfigCmdService {
      * @param msg 运行信息
      */
     void updateStatus(String id, RunningStatus status,String msg);
+
+    /**
+     * 删除cdc任务
+     */
+    void delete(CdcDeleteCmd cmd);
 }

@@ -4,10 +4,13 @@ import com.cyan.arch.common.api.Response;
 import com.cyan.cdc.adapter.convert.CdcConfigAdapterConvert;
 import com.cyan.cdc.adapter.http.dto.CdcConfigDTO;
 import com.cyan.cdc.app.bo.CdcConfigBO;
-import com.cyan.cdc.app.cmd.CDCStartCmd;
-import com.cyan.cdc.app.service.CdcConfigCmdService;
 import com.cyan.cdc.app.cmd.CDCConfigCmd;
+import com.cyan.cdc.app.cmd.CDCStartCmd;
+import com.cyan.cdc.app.cmd.CdcDeleteCmd;
+import com.cyan.cdc.app.service.CdcConfigCmdService;
 import com.cyan.cdc.app.service.CdcConfigQueryService;
+import com.cyan.cdc.infra.dos.DebeziumDO;
+import com.cyan.cdc.infra.rpc.DebeziumRPC;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -26,18 +29,22 @@ public class CdcConfigController {
 
     private final CdcConfigCmdService cdcConfigCmdService;
     private final CdcConfigQueryService cDCConfigQueryService;
+    private final DebeziumRPC debeziumRPC;
 
-    public CdcConfigController(CdcConfigCmdService cdcConfigCmdService, CdcConfigQueryService cDCConfigQueryService) {
+    public CdcConfigController(CdcConfigCmdService cdcConfigCmdService, CdcConfigQueryService cDCConfigQueryService, DebeziumRPC debeziumRPC) {
         this.cdcConfigCmdService = cdcConfigCmdService;
         this.cDCConfigQueryService = cDCConfigQueryService;
+        this.debeziumRPC = debeziumRPC;
     }
+
 
     /**
      * 查询cdc配置列表
      */
     @GetMapping("/list")
-    public Response<List<CdcConfigDTO>> list(){
-        List<CdcConfigBO> cdcConfigBOS =  cDCConfigQueryService.list();
+    public Response<List<CdcConfigDTO>> list() {
+        List<String> connectors = debeziumRPC.connectors();
+        List<CdcConfigBO> cdcConfigBOS = cDCConfigQueryService.list(null);
         List<CdcConfigDTO> list = Optional.ofNullable(cdcConfigBOS).orElse(List.of()).stream().map(CdcConfigAdapterConvert.INSTANCE::toDatasourceInfoDTO).toList();
         return Response.success(list);
     }
@@ -68,5 +75,23 @@ public class CdcConfigController {
     public Response<Void> stop(@RequestBody @Validated CDCStartCmd cmd) {
         cdcConfigCmdService.stop(cmd);
         return Response.success();
+    }
+
+    /**
+     * 删除cdc
+     */
+    @PostMapping("/delete")
+    public Response<Object> delete(@RequestBody CdcDeleteCmd cmd) {
+        cdcConfigCmdService.delete(cmd);
+        return Response.success();
+    }
+
+    /**
+     * 查询cdc连接器状态
+     */
+    @GetMapping("/connectors/status")
+    public Response<DebeziumDO> connectorsStatus(@RequestParam String connectorName) {
+        DebeziumDO debeziumDO = debeziumRPC.connectorStatus(connectorName);
+        return Response.success(debeziumDO);
     }
 }
