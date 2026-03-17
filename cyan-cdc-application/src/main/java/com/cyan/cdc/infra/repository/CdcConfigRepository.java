@@ -47,4 +47,33 @@ public interface CdcConfigRepository {
      * @param id 主键
      */
     void delete(String id);
+
+    /**
+     * 按数据源实例查询所有cdc配置
+     * 数据源实例由 hostname + port + username 唯一标识
+     *
+     * @param hostname 主机地址
+     * @param port     端口
+     * @param username 用户名
+     * @return 该数据源下的所有cdc配置
+     */
+    List<CdcConfig> listByDatasource(String hostname, String port, String username);
+
+    /**
+     * 按连接器名称查询所有cdc配置
+     *
+     * @param connectorName 连接器名称
+     * @return 使用该连接器的所有cdc配置
+     */
+    List<CdcConfig> listByConnectorName(String connectorName);
+
+    /**
+     * 检查数据源实例是否存在
+     *
+     * @param hostname 主机地址
+     * @param port     端口
+     * @param username 用户名
+     * @return 是否存在
+     */
+    boolean existsByDatasource(String hostname, String port, String username);
 }

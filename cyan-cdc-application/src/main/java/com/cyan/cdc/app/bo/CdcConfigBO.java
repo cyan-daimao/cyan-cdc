@@ -84,6 +84,11 @@ public class CdcConfigBO {
     private String connectorName;
 
     /**
+     * 是否启用（true-启用，false-禁用）
+     */
+    private Boolean enabled;
+
+    /**
      * 创建时间
      */
     private LocalDateTime createdAt;

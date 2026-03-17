@@ -104,6 +104,12 @@ public class CdcConfigDO {
     private String connectorName;
 
     /**
+     * 是否启用（true-启用，false-禁用）
+     */
+    @TableField(value = "enabled")
+    private Boolean enabled;
+
+    /**
      * 创建时间
      */
     @TableField(value = "created_at")

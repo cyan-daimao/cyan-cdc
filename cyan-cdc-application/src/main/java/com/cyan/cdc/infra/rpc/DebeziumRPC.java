@@ -2,6 +2,7 @@ package com.cyan.cdc.infra.rpc;
 
 import com.cyan.cdc.infra.dos.DebeziumDO;
 import com.cyan.cdc.infra.rpc.request.ConnectorSaveRequest;
+import com.cyan.cdc.infra.rpc.request.config.MySQLConnectorConfig;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.*;
 
@@ -25,12 +26,13 @@ public interface DebeziumRPC {
     Object createConnector(@RequestBody ConnectorSaveRequest request);
 
     /**
-     * 创建连接器
+     * 更新连接器配置
+     * 注意：此接口直接接收配置对象，而非包装对象
      *
-     * @return 创建结果
+     * @return 更新结果
      */
     @PutMapping("/connectors/{connectorName}/config")
-    Object updateConnector(@PathVariable("connectorName") String connectorName,@RequestBody ConnectorSaveRequest request);
+    Object updateConnector(@PathVariable("connectorName") String connectorName, @RequestBody MySQLConnectorConfig config);
 
     /**
      * 查询所有连接器

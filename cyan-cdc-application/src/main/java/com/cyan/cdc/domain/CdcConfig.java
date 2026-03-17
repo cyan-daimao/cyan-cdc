@@ -87,6 +87,12 @@ public class CdcConfig {
     private String connectorName;
 
     /**
+     * 是否启用（true-启用，false-禁用）
+     * 启用时会将该表添加到连接器的监控列表中
+     */
+    private Boolean enabled;
+
+    /**
      * 创建时间
      */
     private LocalDateTime createdAt;

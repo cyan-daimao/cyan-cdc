@@ -1,6 +1,5 @@
 package com.cyan.cdc.app.service.impl;
 
-import com.cyan.arch.common.api.BusinessException;
 import com.cyan.arch.common.api.SilentException;
 import com.cyan.arch.common.util.StrUtils;
 import com.cyan.cdc.app.bo.CdcConfigBO;
@@ -10,19 +9,16 @@ import com.cyan.cdc.app.cmd.CdcDeleteCmd;
 import com.cyan.cdc.app.convert.CdcConfigAppConvert;
 import com.cyan.cdc.app.service.CdcConfigCmdService;
 import com.cyan.cdc.app.service.CdcConfigQueryService;
-import com.cyan.cdc.app.service.CdcService;
-import com.cyan.cdc.client.enums.DatasourceType;
 import com.cyan.cdc.client.enums.RunningStatus;
 import com.cyan.cdc.domain.CdcConfig;
+import com.cyan.cdc.infra.convert.CdcConfigInfraConvert;
 import com.cyan.cdc.infra.repository.CdcConfigRepository;
 import com.cyan.cdc.infra.rpc.DebeziumRPC;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.EnumMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 
 /**
  * 数据源信息服务
@@ -34,14 +30,15 @@ import java.util.Optional;
 @Transactional(rollbackFor = Exception.class)
 public class CdcConfigCmdServiceImpl implements CdcConfigCmdService {
 
+    @Value("${kafka.url}")
+    private String kafkaUrl;
+
     private final CdcConfigRepository cdcConfigRepository;
-    private final Map<DatasourceType, CdcService> cdcServiceMap = new EnumMap<>(DatasourceType.class);
     private final DebeziumRPC debeziumRPC;
     private final CdcConfigQueryService cdcConfigQueryService;
 
-    public CdcConfigCmdServiceImpl(CdcConfigRepository cdcConfigRepository, List<CdcService> cdcServices, DebeziumRPC debeziumRPC, CdcConfigQueryService cdcConfigQueryService) {
+    public CdcConfigCmdServiceImpl(CdcConfigRepository cdcConfigRepository, DebeziumRPC debeziumRPC, CdcConfigQueryService cdcConfigQueryService) {
         this.cdcConfigRepository = cdcConfigRepository;
-        Optional.ofNullable(cdcServices).orElse(List.of()).forEach(cdcService -> cdcServiceMap.put(cdcService.getDatasourceType(), cdcService));
         this.debeziumRPC = debeziumRPC;
         this.cdcConfigQueryService = cdcConfigQueryService;
     }
@@ -68,18 +65,36 @@ public class CdcConfigCmdServiceImpl implements CdcConfigCmdService {
 
     /**
      * 启动cdc任务
+     * 启用表并更新连接器配置，如果连接器未运行则启动它
      *
      * @param cmd 启动参数
      */
     @Override
     public void start(CDCStartCmd cmd) {
         CdcConfig cdcConfig = cdcConfigRepository.queryById(cmd.getId());
-        //启动cdc任务
-        cdcServiceMap.get(cdcConfig.getDatasourceType()).start(cmd.getId());
+        if (cdcConfig == null) {
+            throw new SilentException("cdc-config不存在");
+        }
+        
+        // 启用该表
+        cdcConfig.setEnabled(true);
+        cdcConfig.setRunningStatus(RunningStatus.RUNNING);
+        cdcConfig.update(cdcConfigRepository);
+        
+        // 更新连接器配置（只包含启用的表）
+        updateConnectorConfig(cdcConfig);
+        
+        // 检查连接器状态，如果未运行则启动
+        try {
+            debeziumRPC.startConnector(cdcConfig.getConnectorName());
+        } catch (Exception e) {
+            // 连接器可能已经在运行，忽略错误
+        }
     }
 
     /**
      * 停止cdc任务
+     * 禁用表并更新连接器配置
      *
      * @param cmd 停止参数
      */
@@ -89,13 +104,30 @@ public class CdcConfigCmdServiceImpl implements CdcConfigCmdService {
         if (cdcConfig == null) {
             throw new SilentException("cdc-config不存在");
         }
-        //停止cdc任务
-        try {
-            cdcServiceMap.get(cdcConfig.getDatasourceType()).stop(cmd.getId());
-            updateStatus(cmd.getId(), RunningStatus.STOP, null);
-        } catch (Exception e) {
-            updateStatus(cmd.getId(), RunningStatus.RUNNING, e.getMessage());
-            throw new BusinessException(e.getMessage());
+        
+        // 禁用该表
+        cdcConfig.setEnabled(false);
+        cdcConfig.setRunningStatus(RunningStatus.STOP);
+        cdcConfig.update(cdcConfigRepository);
+        
+        // 更新连接器配置（只包含启用的表）
+        updateConnectorConfig(cdcConfig);
+        
+        // 检查该数据源下是否还有启用的表，如果没有则停止连接器
+        List<CdcConfig> allConfigs = cdcConfigRepository.listByDatasource(
+                cdcConfig.getHostname(), 
+                cdcConfig.getPort(), 
+                cdcConfig.getUsername()
+        );
+        boolean hasEnabledTable = allConfigs.stream()
+                .anyMatch(c -> Boolean.TRUE.equals(c.getEnabled()));
+        
+        if (!hasEnabledTable) {
+            try {
+                debeziumRPC.stopConnector(cdcConfig.getConnectorName());
+            } catch (Exception e) {
+                // 忽略错误
+            }
         }
     }
 
@@ -116,12 +148,62 @@ public class CdcConfigCmdServiceImpl implements CdcConfigCmdService {
 
     /**
      * 删除cdc任务
-     *
+     * 删除表配置时，更新连接器的table.include.list
+     * 如果该数据源下没有其他表了才删除连接器
      */
     @Override
     public void delete(CdcDeleteCmd cmd) {
-        CdcConfigBO cdcConfigBO = cdcConfigQueryService.queryById(cmd.getId());
-        debeziumRPC.deleteConnector(cdcConfigBO.getConnectorName());
+        CdcConfig cdcConfig = cdcConfigRepository.queryById(cmd.getId());
+        if (cdcConfig == null) {
+            throw new SilentException("cdc-config不存在");
+        }
+        
+        String connectorName = cdcConfig.getConnectorName();
+        String hostname = cdcConfig.getHostname();
+        String port = cdcConfig.getPort();
+        String username = cdcConfig.getUsername();
+        
+        // 先删除数据库记录
         cdcConfigRepository.delete(cmd.getId());
+        
+        // 查询该数据源下剩余的配置
+        List<CdcConfig> remainingConfigs = cdcConfigRepository.listByDatasource(hostname, port, username);
+        
+        if (remainingConfigs.isEmpty()) {
+            // 该数据源下没有其他表了，删除连接器
+            debeziumRPC.deleteConnector(connectorName);
+        } else {
+            // 还有其他表，更新连接器的table.include.list
+            String databaseIncludeList = CdcConfigInfraConvert.INSTANCE.buildDatabaseIncludeList(remainingConfigs);
+            String tableIncludeList = CdcConfigInfraConvert.INSTANCE.buildTableIncludeList(remainingConfigs);
+            
+            // 使用第一个配置作为基础配置
+            CdcConfig baseConfig = remainingConfigs.get(0);
+            debeziumRPC.updateConnector(connectorName, 
+                    CdcConfigInfraConvert.INSTANCE.toMySQLConnectorConfig(baseConfig, kafkaUrl, databaseIncludeList, tableIncludeList));
+        }
+    }
+
+    /**
+     * 更新连接器配置
+     * 只包含启用状态的表
+     *
+     * @param cdcConfig cdc配置
+     */
+    private void updateConnectorConfig(CdcConfig cdcConfig) {
+        // 获取该数据源下所有配置
+        List<CdcConfig> allConfigs = cdcConfigRepository.listByDatasource(
+                cdcConfig.getHostname(), 
+                cdcConfig.getPort(), 
+                cdcConfig.getUsername()
+        );
+        
+        // 只包含启用状态的表
+        String databaseIncludeList = CdcConfigInfraConvert.INSTANCE.buildDatabaseIncludeListEnabled(allConfigs);
+        String tableIncludeList = CdcConfigInfraConvert.INSTANCE.buildTableIncludeListEnabled(allConfigs);
+        
+        // 更新连接器配置
+        debeziumRPC.updateConnector(cdcConfig.getConnectorName(), 
+                CdcConfigInfraConvert.INSTANCE.toMySQLConnectorConfig(cdcConfig, kafkaUrl, databaseIncludeList, tableIncludeList));
     }
 }
