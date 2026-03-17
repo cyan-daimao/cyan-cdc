@@ -9,6 +9,7 @@ import com.cyan.cdc.app.cmd.CDCStartCmd;
 import com.cyan.cdc.app.cmd.CdcDeleteCmd;
 import com.cyan.cdc.app.service.CdcConfigCmdService;
 import com.cyan.cdc.app.service.CdcConfigQueryService;
+import com.cyan.cdc.domain.query.CdcConfigListQuery;
 import com.cyan.cdc.infra.dos.DebeziumDO;
 import com.cyan.cdc.infra.rpc.DebeziumRPC;
 import org.springframework.validation.annotation.Validated;
@@ -44,7 +45,7 @@ public class CdcConfigController {
     @GetMapping("/list")
     public Response<List<CdcConfigDTO>> list() {
         List<String> connectors = debeziumRPC.connectors();
-        List<CdcConfigBO> cdcConfigBOS = cDCConfigQueryService.list(null);
+        List<CdcConfigBO> cdcConfigBOS = cDCConfigQueryService.list(new CdcConfigListQuery());
         List<CdcConfigDTO> list = Optional.ofNullable(cdcConfigBOS).orElse(List.of()).stream().map(CdcConfigAdapterConvert.INSTANCE::toDatasourceInfoDTO).toList();
         return Response.success(list);
     }
@@ -91,7 +92,7 @@ public class CdcConfigController {
      */
     @GetMapping("/connectors/status")
     public Response<DebeziumDO> connectorsStatus(@RequestParam String connectorName) {
-        DebeziumDO debeziumDO = debeziumRPC.connectorStatus(connectorName);
-        return Response.success(debeziumDO);
+        DebeziumDO obj = debeziumRPC.connectorStatus(connectorName);
+        return Response.success(obj);
     }
 }

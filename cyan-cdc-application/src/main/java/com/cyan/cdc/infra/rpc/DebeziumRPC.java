@@ -25,6 +25,14 @@ public interface DebeziumRPC {
     Object createConnector(@RequestBody ConnectorSaveRequest request);
 
     /**
+     * 创建连接器
+     *
+     * @return 创建结果
+     */
+    @PutMapping("/connectors/{connectorName}/config")
+    Object updateConnector(@PathVariable("connectorName") String connectorName,@RequestBody ConnectorSaveRequest request);
+
+    /**
      * 查询所有连接器
      *
      * @return 查询结果
