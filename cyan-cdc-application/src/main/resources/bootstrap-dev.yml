@@ -23,3 +23,16 @@ spring:
 
 kafka:
   url: 10.0.0.2:9092
+
+flink:
+  jobmanager:
+    url: http://flink.cyan.com/
+  sqlgateway:
+    url: http://flink-sql-gateway.cyan.com/
+cdc:
+  s3:
+    endpoint: http://rustfs.cyan.com
+    access-key: rustfsadmin
+    secret-key: rustfsadmin
+  restcatalog:
+    url: http://iceberg-gravitino.cyan.com/iceberg
