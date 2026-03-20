@@ -8,7 +8,6 @@ import com.cyan.cdc.app.cmd.CDCStartCmd;
 import com.cyan.cdc.app.cmd.CdcDeleteCmd;
 import com.cyan.cdc.app.convert.CdcConfigAppConvert;
 import com.cyan.cdc.app.service.CdcConfigCmdService;
-import com.cyan.cdc.app.service.CdcConfigQueryService;
 import com.cyan.cdc.client.enums.RunningStatus;
 import com.cyan.cdc.domain.CdcConfig;
 import com.cyan.cdc.infra.convert.CdcConfigInfraConvert;
@@ -35,12 +34,10 @@ public class CdcConfigCmdServiceImpl implements CdcConfigCmdService {
 
     private final CdcConfigRepository cdcConfigRepository;
     private final DebeziumRPC debeziumRPC;
-    private final CdcConfigQueryService cdcConfigQueryService;
 
-    public CdcConfigCmdServiceImpl(CdcConfigRepository cdcConfigRepository, DebeziumRPC debeziumRPC, CdcConfigQueryService cdcConfigQueryService) {
+    public CdcConfigCmdServiceImpl(CdcConfigRepository cdcConfigRepository, DebeziumRPC debeziumRPC) {
         this.cdcConfigRepository = cdcConfigRepository;
         this.debeziumRPC = debeziumRPC;
-        this.cdcConfigQueryService = cdcConfigQueryService;
     }
 
     /**
@@ -66,6 +63,8 @@ public class CdcConfigCmdServiceImpl implements CdcConfigCmdService {
     /**
      * 启动cdc任务
      * 启用表并更新连接器配置，如果连接器未运行则启动它
+     * <p>
+     * 注意：当添加新表时，需要重启连接器让 Debezium 获取新表的 schema
      *
      * @param cmd 启动参数
      */
@@ -75,20 +74,55 @@ public class CdcConfigCmdServiceImpl implements CdcConfigCmdService {
         if (cdcConfig == null) {
             throw new SilentException("cdc-config不存在");
         }
-        
+
+        // 获取该数据源下所有配置
+        List<CdcConfig> allConfigs = cdcConfigRepository.listByDatasource(
+                cdcConfig.getHostname(),
+                cdcConfig.getPort(),
+                cdcConfig.getUsername()
+        );
+
+        // 检查是否是新增表（之前没有启用的表，现在要启用）
+        boolean isNewTable = !Boolean.TRUE.equals(cdcConfig.getEnabled());
+
         // 启用该表
         cdcConfig.setEnabled(true);
         cdcConfig.setRunningStatus(RunningStatus.RUNNING);
         cdcConfig.update(cdcConfigRepository);
-        
-        // 更新连接器配置（只包含启用的表）
-        updateConnectorConfig(cdcConfig);
-        
-        // 检查连接器状态，如果未运行则启动
-        try {
-            debeziumRPC.startConnector(cdcConfig.getConnectorName());
-        } catch (Exception e) {
-            // 连接器可能已经在运行，忽略错误
+
+        // 更新连接器配置
+        String databaseIncludeList = CdcConfigInfraConvert.INSTANCE.buildDatabaseIncludeListEnabled(allConfigs);
+        String tableIncludeList = CdcConfigInfraConvert.INSTANCE.buildTableIncludeListEnabled(allConfigs);
+        debeziumRPC.updateConnector(cdcConfig.getConnectorName(),
+                CdcConfigInfraConvert.INSTANCE.toMySQLConnectorConfig(cdcConfig, kafkaUrl, databaseIncludeList, tableIncludeList));
+
+        // 如果是新增表，更新配置后重启连接器
+        // 使用 incremental.snapshot.enabled=true 和 snapshot.mode=when_needed 时
+        // Debezium 会自动对新表进行快照
+        if (isNewTable) {
+            try {
+                // 先停止连接器
+                debeziumRPC.stopConnector(cdcConfig.getConnectorName());
+                // 等待一小段时间让连接器完全停止
+                Thread.sleep(2000);
+            } catch (Exception e) {
+                // 忽略错误，连接器可能未在运行
+            }
+
+            // 启动连接器（配置已经在上面更新了）
+            // Debezium 会检测到新表并自动进行快照
+            try {
+                debeziumRPC.startConnector(cdcConfig.getConnectorName());
+            } catch (Exception e) {
+                throw new SilentException("启动连接器失败：" + e.getMessage());
+            }
+        } else {
+            // 不是新增表，直接启动连接器
+            try {
+                debeziumRPC.startConnector(cdcConfig.getConnectorName());
+            } catch (Exception e) {
+                // 连接器可能已经在运行，忽略错误
+            }
         }
     }
 
@@ -178,7 +212,7 @@ public class CdcConfigCmdServiceImpl implements CdcConfigCmdService {
             String tableIncludeList = CdcConfigInfraConvert.INSTANCE.buildTableIncludeList(remainingConfigs);
             
             // 使用第一个配置作为基础配置
-            CdcConfig baseConfig = remainingConfigs.get(0);
+            CdcConfig baseConfig = remainingConfigs.getFirst();
             debeziumRPC.updateConnector(connectorName, 
                     CdcConfigInfraConvert.INSTANCE.toMySQLConnectorConfig(baseConfig, kafkaUrl, databaseIncludeList, tableIncludeList));
         }

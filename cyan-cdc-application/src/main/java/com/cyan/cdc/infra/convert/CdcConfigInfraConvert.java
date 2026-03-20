@@ -43,6 +43,12 @@ public interface CdcConfigInfraConvert {
 
     /**
      * 构建MySQL连接器配置（用于更新接口）
+     * <p>
+     * 注意：schema.history.internal.kafka.topic 使用实例级别的名称，
+     * 确保同一MySQL实例的所有库共享同一个历史主题，避免动态添加库时出现
+     * "The db history topic is missing" 错误。
+     * <p>
+     * snapshot.mode 设置为 when_needed，支持动态添加表时自动获取 schema。
      *
      * @param cdcConfig          数据源基础配置
      * @param kafkaUrl           kafka地址
@@ -52,6 +58,10 @@ public interface CdcConfigInfraConvert {
      */
     default MySQLConnectorConfig toMySQLConnectorConfig(CdcConfig cdcConfig, String kafkaUrl,
                                                          String databaseIncludeList, String tableIncludeList) {
+        // 使用实例级别的历史主题名称，与具体库无关
+        // 格式：schema-history-{hostname}-{port}
+        String historyTopic = "schema-history-" + cdcConfig.getHostname() + "-" + cdcConfig.getPort();
+
         return new MySQLConnectorConfig()
                 .setTaskMax("1")
                 .setHostname(cdcConfig.getHostname())
@@ -60,11 +70,17 @@ public interface CdcConfigInfraConvert {
                 .setPassword(cdcConfig.getPassword())
                 .setServerId(cdcConfig.getServerId())
                 .setTopicPrefix(cdcConfig.getConnectorName())
-                .setDatabaseIncludeList(databaseIncludeList)
+                // 不设置 database.include.list，让 Debezium 读取所有数据库的 binlog
+                // 只通过 table.include.list 来过滤具体的表
                 .setTableIncludeList(tableIncludeList)
-                .setKafkaTopic(cdcConfig.getConnectorName())
+                .setKafkaTopic(historyTopic)
                 .setKafkaBootstrapServers(kafkaUrl)
-                .setIncludeSchemaChanges(true);
+                .setIncludeSchemaChanges(true)
+                // 使用 when_needed 模式，配合增量快照框架支持动态添加表
+                .setSnapshotMode("when_needed")
+                // 增量快照配置
+                .setIncrementalSnapshotEnabled(true)
+                .setIncrementalSnapshotChunkSize("1024");
     }
 
     /**

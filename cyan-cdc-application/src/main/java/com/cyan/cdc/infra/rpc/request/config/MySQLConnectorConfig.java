@@ -1,6 +1,7 @@
 package com.cyan.cdc.infra.rpc.request.config;
 
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -36,6 +37,7 @@ import lombok.experimental.Accessors;
 @NoArgsConstructor
 @Data
 @Accessors(chain = true)
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class MySQLConnectorConfig extends ConnectorConfig{
 
     /**
@@ -130,4 +132,42 @@ public class MySQLConnectorConfig extends ConnectorConfig{
      */
     @JsonProperty("decimal.handling.mode")
     private final String decimalHandlingMode = "string";
+
+    /**
+     * 快照模式
+     * when_needed: 当需要时执行快照（支持动态添加表）
+     */
+    @JsonProperty("snapshot.mode")
+    private String snapshotMode;
+
+    /**
+     * 增量快照配置：信号数据集合（格式：db.table）
+     * 用于支持动态添加表时触发增量快照
+     */
+    @JsonProperty("signal.data.collection")
+    private String signalDataCollection;
+
+    /**
+     * 增量快照配置：信号数据源
+     */
+    @JsonProperty("signal.enabled.channels")
+    private String signalEnabledChannels = "source";
+
+    /**
+     * 增量快照是否启用
+     */
+    @JsonProperty("incremental.snapshot.enabled")
+    private Boolean incrementalSnapshotEnabled;
+
+    /**
+     * 增量快照块大小
+     */
+    @JsonProperty("incremental.snapshot.chunk.size")
+    private String incrementalSnapshotChunkSize;
+
+    /**
+     * 增量快照水线间隙策略
+     */
+    @JsonProperty("incremental.snapshot.allow_null_values")
+    private Boolean incrementalSnapshotAllowNullValues;
 }

@@ -91,39 +91,81 @@ public class CdcConfigRepositoryImpl implements CdcConfigRepository {
             );
             log.info("debezium连接器创建成功: {}", JSON.toJSONString(connector));
         } else {
-            // 数据源已存在，复用连接器，更新table.include.list
-            CdcConfig existingConfig = existingConfigs.get(0);
-            // 继承已存在配置的name和连接器信息，避免唯一约束冲突
-            cdcConfig.setServerId(existingConfig.getServerId())
-                    .setConnectorName(existingConfig.getConnectorName())
-                    .setName(existingConfig.getName());
-            cdcConfigDO.setServerId(existingConfig.getServerId())
-                    .setConnectorName(existingConfig.getConnectorName())
-                    .setName(existingConfig.getName());
-            
-            try {
-                cdcConfigMapper.insert(cdcConfigDO);
-            } catch (DuplicateKeyException e) {
-                throw new SilentException("cdc配置的表已存在,请检查（主机+端口+库+表）组合是否已存在");
+            CdcConfig existingConfig = existingConfigs.getFirst();
+            boolean sameDb = existingConfigs.stream().anyMatch(c -> cdcConfig.getDb().equals(c.getDb()));
+
+            if (!sameDb) {
+                // 相同数据源但不同库：先删除旧连接器，再创建新连接器
+                String oldConnectorName = existingConfig.getConnectorName();
+                int serverId = cdcConfigMapper.findAServerId();
+                String connectorName = "%s_%s_%s".formatted(
+                        cdcConfig.getName(),
+                        cdcConfig.getHostname().replace(".", "_"),
+                        cdcConfig.getPort()
+                );
+                cdcConfig.setServerId(serverId)
+                        .setConnectorName(connectorName);
+                cdcConfigDO.setServerId(serverId)
+                        .setConnectorName(connectorName);
+
+                try {
+                    cdcConfigMapper.insert(cdcConfigDO);
+                } catch (DuplicateKeyException e) {
+                    throw new SilentException("cdc配置已存在,请检查name是否重复或（主机+端口+库+表）组合是否已存在");
+                }
+
+                cdcConfig.setId(cdcConfigDO.getId() + "");
+
+                // 删除旧连接器
+                debeziumRPC.deleteConnector(oldConnectorName);
+                log.info("debezium旧连接器删除成功: {}", oldConnectorName);
+
+                // 创建新连接器（包含所有已有表 + 新表）
+                List<CdcConfig> allConfigs = listByDatasource(
+                        cdcConfig.getHostname(),
+                        cdcConfig.getPort(),
+                        cdcConfig.getUsername()
+                );
+                String databaseIncludeList = CdcConfigInfraConvert.INSTANCE.buildDatabaseIncludeListEnabled(allConfigs);
+                String tableIncludeList = CdcConfigInfraConvert.INSTANCE.buildTableIncludeListEnabled(allConfigs);
+                Object connector = debeziumRPC.createConnector(
+                        CdcConfigInfraConvert.INSTANCE.toConnectorSaveRequest(cdcConfig, kafkaUrl, databaseIncludeList, tableIncludeList)
+                );
+                log.info("debezium连接器重建成功: {}", JSON.toJSONString(connector));
+            } else {
+                // 相同数据源且相同库：复用连接器，更新table.include.list
+                // 继承已存在配置的name和连接器信息，避免唯一约束冲突
+                cdcConfig.setServerId(existingConfig.getServerId())
+                        .setConnectorName(existingConfig.getConnectorName())
+                        .setName(existingConfig.getName());
+                cdcConfigDO.setServerId(existingConfig.getServerId())
+                        .setConnectorName(existingConfig.getConnectorName())
+                        .setName(existingConfig.getName());
+
+                try {
+                    cdcConfigMapper.insert(cdcConfigDO);
+                } catch (DuplicateKeyException e) {
+                    throw new SilentException("cdc配置的表已存在,请检查（主机+端口+库+表）组合是否已存在");
+                }
+
+                cdcConfig.setId(cdcConfigDO.getId() + "");
+
+                // 获取该数据源下所有配置（包括新插入的），只包含启用的表
+                List<CdcConfig> allConfigs = listByDatasource(
+                        cdcConfig.getHostname(),
+                        cdcConfig.getPort(),
+                        cdcConfig.getUsername()
+                );
+                String databaseIncludeList = CdcConfigInfraConvert.INSTANCE.buildDatabaseIncludeListEnabled(allConfigs);
+                String tableIncludeList = CdcConfigInfraConvert.INSTANCE.buildTableIncludeListEnabled(allConfigs);
+
+                // 更新连接器配置
+                Object connector = debeziumRPC.updateConnector(
+                        cdcConfig.getConnectorName(),
+                        CdcConfigInfraConvert.INSTANCE.toMySQLConnectorConfig(cdcConfig, kafkaUrl, databaseIncludeList, tableIncludeList)
+                );
+                log.info("debezium连接器更新成功: {}", JSON.toJSONString(connector));
             }
-            
-            cdcConfig.setId(cdcConfigDO.getId() + "");
-            
-            // 获取该数据源下所有配置（包括新插入的），只包含启用的表
-            List<CdcConfig> allConfigs = listByDatasource(
-                    cdcConfig.getHostname(), 
-                    cdcConfig.getPort(), 
-                    cdcConfig.getUsername()
-            );
-            String databaseIncludeList = CdcConfigInfraConvert.INSTANCE.buildDatabaseIncludeListEnabled(allConfigs);
-            String tableIncludeList = CdcConfigInfraConvert.INSTANCE.buildTableIncludeListEnabled(allConfigs);
-            
-            // 更新连接器配置
-            Object connector = debeziumRPC.updateConnector(
-                    cdcConfig.getConnectorName(),
-                    CdcConfigInfraConvert.INSTANCE.toMySQLConnectorConfig(cdcConfig, kafkaUrl, databaseIncludeList, tableIncludeList)
-            );
-            log.info("debezium连接器更新成功: {}", JSON.toJSONString(connector));
         }
         
         cdcConfigDO = cdcConfigMapper.selectById(cdcConfigDO.getId());
