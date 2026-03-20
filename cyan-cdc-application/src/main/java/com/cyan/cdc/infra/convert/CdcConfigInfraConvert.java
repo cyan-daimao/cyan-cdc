@@ -49,6 +49,7 @@ public interface CdcConfigInfraConvert {
      * "The db history topic is missing" 错误。
      * <p>
      * snapshot.mode 设置为 when_needed，支持动态添加表时自动获取 schema。
+     * 配置增量快照信号表，用于动态添加表时触发全量同步。
      *
      * @param cdcConfig          数据源基础配置
      * @param kafkaUrl           kafka地址
@@ -61,6 +62,10 @@ public interface CdcConfigInfraConvert {
         // 使用实例级别的历史主题名称，与具体库无关
         // 格式：schema-history-{hostname}-{port}
         String historyTopic = "schema-history-" + cdcConfig.getHostname() + "-" + cdcConfig.getPort();
+
+        // 信号表：用于发送增量快照信号
+        // 格式：{db}.debezium_signal，必须在对应的数据库中创建
+        String signalTable = cdcConfig.getDb() + ".debezium_signal";
 
         return new MySQLConnectorConfig()
                 .setTaskMax("1")
@@ -80,7 +85,10 @@ public interface CdcConfigInfraConvert {
                 .setSnapshotMode("when_needed")
                 // 增量快照配置
                 .setIncrementalSnapshotEnabled(true)
-                .setIncrementalSnapshotChunkSize("1024");
+                .setIncrementalSnapshotChunkSize("1024")
+                // 信号表配置：用于发送增量快照信号
+                // 格式：{database}.debezium_signal
+                .setSignalDataCollection(signalTable);
     }
 
     /**
