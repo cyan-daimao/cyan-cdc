@@ -63,9 +63,10 @@ public interface CdcConfigInfraConvert {
         // 格式：schema-history-{hostname}-{port}
         String historyTopic = "schema-history-" + cdcConfig.getHostname() + "-" + cdcConfig.getPort();
 
-        // 信号表：用于发送增量快照信号
-        // 格式：{db}.debezium_signal，必须在对应的数据库中创建
-        String signalTable = cdcConfig.getDb() + ".debezium_signal";
+        // 信号表：一个数据源只需要一个统一的信号表
+        // 使用固定的信号库名：debezium_cdc，信号表名：signal
+        // 不会污染业务库，所有该数据源的CDC配置共用这一个信号表
+        String signalTable = "debezium_cdc.signal";
 
         return new MySQLConnectorConfig()
                 .setTaskMax("1")
@@ -87,7 +88,7 @@ public interface CdcConfigInfraConvert {
                 .setIncrementalSnapshotEnabled(true)
                 .setIncrementalSnapshotChunkSize("1024")
                 // 信号表配置：用于发送增量快照信号
-                // 格式：{database}.debezium_signal
+                // 固定格式：debezium_cdc.signal（一个数据源一个统一的信号表）
                 .setSignalDataCollection(signalTable);
     }
 
