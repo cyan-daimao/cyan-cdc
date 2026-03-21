@@ -47,10 +47,9 @@ public class Main {
         
         // 启用 checkpoint（Iceberg 写入必须依赖 checkpoint commit）
         long checkpointInterval = cdcSyncConfig.getFlink().getCheckpointInterval();
-        env.enableCheckpointing(checkpointInterval > 0 ? checkpointInterval : 10000); // 默认 10 秒
-        
-        // 配置 checkpoint storage（本地调试用）
-        env.getCheckpointConfig().setCheckpointStorage("file:///tmp/flink-checkpoints");
+        long interval = checkpointInterval > 0 ? checkpointInterval : 10000; // 默认 10 秒
+        env.enableCheckpointing(interval);
+        log.info("Checkpoint 间隔: {}ms", interval);
         
         // 本地调试时增加超时时间
         env.getCheckpointConfig().setCheckpointTimeout(600000); // 10分钟
@@ -59,6 +58,14 @@ public class Main {
         // 确保 checkpoint 完成
         env.getCheckpointConfig().setMinPauseBetweenCheckpoints(500);
         env.getCheckpointConfig().setMaxConcurrentCheckpoints(1);
+        
+        // 配置 exactly-once 语义
+        env.getCheckpointConfig().setCheckpointingMode(org.apache.flink.streaming.api.CheckpointingMode.EXACTLY_ONCE);
+        
+        // 启用 unaligned checkpoint（加速）
+        env.getCheckpointConfig().enableUnalignedCheckpoints();
+        
+        log.info("Checkpoint 配置完成");
 
         //创建对应的同步任务
         for (CdcConfigDTO config : configs) {

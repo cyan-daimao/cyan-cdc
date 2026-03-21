@@ -127,6 +127,9 @@ public class CdcJob {
                 .append();
 
         log.info("CDC同步任务配置完成: {}", jobName);
+        
+        // 打印当前表的 snapshot 信息
+        logSnapshots(table, jobName);
     }
 
     /**
@@ -295,6 +298,33 @@ public class CdcJob {
             }
         } catch (Exception e) {
             log.warn("创建 namespace 失败，可能已存在: {}", namespace, e);
+        }
+    }
+
+    /**
+     * 打印表的 snapshot 信息
+     */
+    private void logSnapshots(Table table, String jobName) {
+        try {
+            var snapshots = table.snapshots();
+            log.info("[{}] 表 {} 当前有 {} 个 snapshots", jobName, table.name(), snapshots.spliterator().estimateSize());
+            for (var snapshot : snapshots) {
+                log.info("[{}] Snapshot: id={}, timestamp={}, files={}, records={}", 
+                    jobName, snapshot.snapshotId(), snapshot.timestampMillis(),
+                    snapshot.summary().getOrDefault("added-data-files", "0"),
+                    snapshot.summary().getOrDefault("added-records", "0"));
+            }
+            
+            // 打印当前 snapshot
+            var currentSnapshot = table.currentSnapshot();
+            if (currentSnapshot != null) {
+                log.info("[{}] 当前 snapshot: id={}, manifestList={}", 
+                    jobName, currentSnapshot.snapshotId(), currentSnapshot.manifestListLocation());
+            } else {
+                log.info("[{}] 表暂无 snapshot", jobName);
+            }
+        } catch (Exception e) {
+            log.warn("[{}] 获取 snapshot 信息失败: {}", jobName, e.getMessage());
         }
     }
 
