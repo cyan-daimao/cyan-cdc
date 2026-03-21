@@ -5,6 +5,8 @@
     <file url="file://$PROJECT_DIR$/cyan-cdc-application/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/cyan-cdc-client/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/cyan-cdc-client/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/cyan-flink-sync/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/cyan-flink-sync/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/main/resources" charset="UTF-8" />
   </component>

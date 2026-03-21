@@ -1,0 +1,47 @@
+# CDC同步配置
+
+# MySQL配置（用于监控cdc_config表）
+mysql:
+  hostname: 10.0.0.2
+  port: 3306
+  database: cyan_cdc
+  username: root
+  password: "627459859@qq.com"
+  cdc-config-table: cdc_config
+
+# Kafka配置
+kafka:
+  bootstrap-servers: 10.0.0.2:9092
+  group-id-prefix: flink-cdc-sync
+
+# Flink配置
+flink:
+  job-manager-url: http://flink.cyan.com/
+  sql-gateway-url: http://flink-sql-gateway.cyan.com/
+  parallelism: 1
+  checkpoint-interval: 60000
+  checkpoint-dir: s3://flink/checkpoints
+
+# S3配置（RustFS）
+s3:
+  endpoint: http://rustfs.cyan.com
+  access-key: rustfsadmin
+  secret-key: rustfsadmin
+  warehouse-bucket: warehouse
+  region: us-east-1
+
+# Iceberg配置
+iceberg:
+  catalog-type: rest
+  # Gravitino REST Catalog URI 格式: http://host/iceberg/{metalake}/{catalog}/v1
+  # 例如: http://iceberg-gravitino.cyan.com/iceberg/my_metalake/my_catalog/v1
+  catalog-uri: http://iceberg-gravitino.cyan.com/iceberg
+  catalog-name: iceberg
+  default-database: cdc_db
+  # 小文件合并阈值：512MB
+  rewrite-data-files-threshold: 536870912
+
+# 监控配置
+monitor:
+  enabled: true
+  interval-ms: 30000

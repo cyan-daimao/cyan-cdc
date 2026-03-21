@@ -11,6 +11,7 @@
     <modules>
         <module>cyan-cdc-application</module>
         <module>cyan-cdc-client</module>
+        <module>cyan-flink-sync</module>
     </modules>
 
     <properties>
