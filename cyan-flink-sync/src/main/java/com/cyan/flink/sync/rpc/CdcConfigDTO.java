@@ -53,6 +53,11 @@ public class CdcConfigDTO {
     private String tbl;
 
     /**
+     *  主题
+     */
+    private String topic;
+
+    /**
      * 数据源用户名
      */
     private String username;
