@@ -77,7 +77,8 @@ public class CdcConfigRepositoryImpl implements CdcConfigRepository {
             cdcConfig.setServerId(serverId)
                     .setConnectorName(connectorName);
             cdcConfigDO.setServerId(serverId)
-                    .setConnectorName(connectorName);
+                    .setConnectorName(connectorName)
+                    .setTopic("%s.%s.%s".formatted(connectorName, cdcConfig.getDb(), cdcConfig.getTbl()));
 
             try {
                 cdcConfigMapper.insert(cdcConfigDO);
@@ -103,7 +104,8 @@ public class CdcConfigRepositoryImpl implements CdcConfigRepository {
                     .setName(existingConfig.getName());
             cdcConfigDO.setServerId(existingConfig.getServerId())
                     .setConnectorName(existingConfig.getConnectorName())
-                    .setName(existingConfig.getName());
+                    .setName(existingConfig.getName())
+                    .setTopic("%s.%s.%s".formatted(existingConfig.getConnectorName(), cdcConfig.getDb(), cdcConfig.getTbl()));
 
             try {
                 cdcConfigMapper.insert(cdcConfigDO);

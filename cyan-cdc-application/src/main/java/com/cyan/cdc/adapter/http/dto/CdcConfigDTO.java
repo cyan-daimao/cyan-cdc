@@ -55,7 +55,12 @@ public class CdcConfigDTO {
      * 表
      */
     private String tbl;
-    
+
+    /**
+     * 数据采集的kafka topic
+     */
+    private String topic;
+
     /**
      * 数据源用户名
      */

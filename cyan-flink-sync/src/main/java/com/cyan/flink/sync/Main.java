@@ -1,12 +1,16 @@
 package com.cyan.flink.sync;
 
+import com.cy.easyhttp.HttpClientProxyFactory;
 import com.cyan.flink.sync.config.CdcSyncConfig;
+import com.cyan.flink.sync.rpc.CdcConfigDTO;
+import com.cyan.flink.sync.rpc.CyanCdcRPC;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.InputStream;
+import java.util.List;
 
 /**
  * 使用flink读取kafka然后同步到iceberg表上
@@ -28,7 +32,10 @@ public class Main {
      * 启动程序
      */
     private static void start(CdcSyncConfig cdcSyncConfig) {
-
+        //获得需要同的cdc配置列表
+        CyanCdcRPC cyanCdcRPC = HttpClientProxyFactory.create(CyanCdcRPC.class);
+        List<CdcConfigDTO> configs = cyanCdcRPC.list().data();
+        System.out.println();
     }
 
     /**

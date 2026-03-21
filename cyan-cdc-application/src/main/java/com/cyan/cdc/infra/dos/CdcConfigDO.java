@@ -68,6 +68,12 @@ public class CdcConfigDO {
     private String tbl;
 
     /**
+     * 对应的kafka的topic
+     */
+    @TableField(value = "topic")
+    private String topic;
+
+    /**
      * 数据源用户名
      */
     @TableField(value = "username")

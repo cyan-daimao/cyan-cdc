@@ -1,16 +1,14 @@
-package com.cyan.cdc.app.bo;
+package com.cyan.flink.sync.rpc;
 
-import com.cyan.cdc.client.enums.DatasourceType;
-import com.cyan.cdc.client.enums.RunningStatus;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.Accessors;
 
-import java.time.LocalDateTime;
 
 /**
- * 数据源业务对象
+ * 数据源信息
+ *
  * @author cy.Y
  * @since 1.0.0
  */
@@ -18,7 +16,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @Data
 @Accessors(chain = true)
-public class CdcConfigBO {
+public class CdcConfigDTO {
     /**
      * 主键id
      */
@@ -30,9 +28,9 @@ public class CdcConfigBO {
     private String name;
 
     /**
-     * 数据源类型
+     * 数据源类型: MYSQL
      */
-    private DatasourceType datasourceType;
+    private String datasourceType;
 
     /**
      * 数据源连接地址
@@ -43,6 +41,7 @@ public class CdcConfigBO {
      * 数据源端口
      */
     private String port;
+
     /**
      * 数据库
      */
@@ -52,11 +51,6 @@ public class CdcConfigBO {
      * 表
      */
     private String tbl;
-
-    /**
-     * kafka topic
-     */
-    private String topic;
 
     /**
      * 数据源用户名
@@ -69,42 +63,22 @@ public class CdcConfigBO {
     private String password;
 
     /**
-     * 运行状态
+     * 运行状态: running
      */
-    private RunningStatus runningStatus;
+    private String runningStatus;
 
     /**
-     * 错误信息
+     * 运行信息
      */
     private String msg;
-
-    /**
-     * debezium服务id
-     */
-    private Integer serverId;
-
-    /**
-     * debezium服务连接器名称
-     */
-    private String connectorName;
-
-    /**
-     * 是否启用（true-启用，false-禁用）
-     */
-    private Boolean enabled;
-
     /**
      * 创建时间
      */
-    private LocalDateTime createdAt;
+    private String createdAt;
 
     /**
      * 更新时间
      */
-    private LocalDateTime updatedAt;
+    private String updatedAt;
 
-    /**
-     * 删除时间
-     */
-    private LocalDateTime deletedAt;
 }

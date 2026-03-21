@@ -57,6 +57,11 @@ public class CdcConfig {
     private String tbl;
 
     /**
+     * kafka topic
+     */
+    private String topic;
+
+    /**
      * 数据源用户名
      */
     private String username;

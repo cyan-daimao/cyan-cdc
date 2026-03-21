@@ -44,7 +44,6 @@ public class CdcConfigController {
      */
     @GetMapping("/list")
     public Response<List<CdcConfigDTO>> list() {
-        List<String> connectors = debeziumRPC.connectors();
         List<CdcConfigBO> cdcConfigBOS = cDCConfigQueryService.list(new CdcConfigListQuery());
         List<CdcConfigDTO> list = Optional.ofNullable(cdcConfigBOS).orElse(List.of()).stream().map(CdcConfigAdapterConvert.INSTANCE::toDatasourceInfoDTO).toList();
         return Response.success(list);
