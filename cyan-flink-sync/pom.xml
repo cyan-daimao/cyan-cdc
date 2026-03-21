@@ -57,24 +57,7 @@
             <version>4.0.1-2.0</version>
         </dependency>
 
-        <!-- Iceberg Core -->
-        <dependency>
-            <groupId>org.apache.iceberg</groupId>
-            <artifactId>iceberg-core</artifactId>
-            <version>${iceberg.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.iceberg</groupId>
-            <artifactId>iceberg-parquet</artifactId>
-            <version>${iceberg.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.iceberg</groupId>
-            <artifactId>iceberg-data</artifactId>
-            <version>${iceberg.version}</version>
-        </dependency>
-        
-        <!-- Iceberg Flink Runtime (包含 Actions API) -->
+        <!-- Iceberg Flink Runtime (包含所有 Iceberg 功能，包括 shade 的 Parquet) -->
         <dependency>
             <groupId>org.apache.iceberg</groupId>
             <artifactId>iceberg-flink-runtime-2.0</artifactId>
@@ -226,6 +209,13 @@
             <groupId>com.alibaba.fastjson2</groupId>
             <artifactId>fastjson2</artifactId>
             <version>2.0.61</version>
+        </dependency>
+
+        <!-- Gravitino 客户端依赖 -->
+        <dependency>
+            <groupId>org.apache.gravitino</groupId>
+            <artifactId>gravitino-client-java-runtime</artifactId>
+            <version>1.1.0</version>
         </dependency>
     </dependencies>
 

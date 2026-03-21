@@ -5,6 +5,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.Accessors;
 
+import java.io.Serializable;
+
 
 /**
  * 数据源信息
@@ -16,7 +18,7 @@ import lombok.experimental.Accessors;
 @NoArgsConstructor
 @Data
 @Accessors(chain = true)
-public class CdcConfigDTO {
+public class CdcConfigDTO implements Serializable {
     /**
      * 主键id
      */

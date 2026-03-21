@@ -4,13 +4,42 @@ import com.alibaba.fastjson2.JSONObject;
 import com.cyan.flink.sync.config.CdcSyncConfig;
 import com.cyan.flink.sync.rpc.CdcConfigDTO;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
+import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
+import org.apache.flink.streaming.api.datastream.DataStreamSink;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
+import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.table.api.TableResult;
+import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
+import org.apache.flink.table.data.GenericRowData;
+import org.apache.flink.table.data.RowData;
+import org.apache.flink.table.data.StringData;
+import org.apache.flink.types.RowKind;
+import org.apache.iceberg.PartitionSpec;
+import org.apache.iceberg.Schema;
+import org.apache.iceberg.Table;
+import org.apache.iceberg.catalog.Catalog;
+import org.apache.iceberg.catalog.Namespace;
+import org.apache.iceberg.catalog.SupportsNamespaces;
+import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.flink.TableLoader;
+import org.apache.iceberg.flink.sink.FlinkSink;
+import org.apache.iceberg.rest.RESTCatalog;
+import org.apache.iceberg.types.Types;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.util.Properties;
+import java.io.Serializable;
+import java.time.Duration;
+import java.util.*;
 
 /**
  * cdc同步任务
@@ -20,14 +49,10 @@ import java.util.Properties;
  */
 public class CdcJob {
 
+    private static final Logger log = LoggerFactory.getLogger(CdcJob.class);
+
     private final StreamExecutionEnvironment env;
-    /**
-     * 配置文件
-     */
     private final CdcSyncConfig config;
-    /**
-     * cdc配置
-     */
     private final CdcConfigDTO cdcConfig;
 
     public CdcJob(StreamExecutionEnvironment env, CdcSyncConfig config, CdcConfigDTO cdcConfig) {
@@ -37,76 +62,434 @@ public class CdcJob {
     }
 
     public void run() {
-        KafkaSource<String> kafkaSource = createKafkaSource(config.getKafka().getBootstrapServers(), cdcConfig.getTopic(), config.getKafka().getGroupIdPrefix(), "earliest");
-        String name = "%s.%s.%s".formatted(cdcConfig.getName(), cdcConfig.getDb(), cdcConfig.getTbl());
-        DataStreamSource<String> stream = env.fromSource(kafkaSource, WatermarkStrategy.noWatermarks(), name);
-        stream.name(name).map(v -> {
-            DebeziumEventRecord debeziumEventRecord = JSONObject.parseObject(v, DebeziumEventRecord.class);
-            //获得表字段
-            DebeziumEventRecord.Field[] fields = debeziumEventRecord.getFields();
-            //查询对应的iceberg表是否存在如果不存在就创建出来,自动创建要写以下属性
-            /*
-            -- Iceberg 写入优化配置
-               -- 1. 实时性配置（核心：保证单条数据快速提交）
-        'streaming.commit-interval' = '10000', -- 10秒超时提交（哪怕只有1条数据，10秒后也提交）
-        'write.commit.manifest.min-count' = '100', -- 最小条目数设为1，允许单文件提交
-        'write.filesize' = '67108864', -- 临时小文件大小：64MB（适配低流量）
+        String jobName = "%s.%s.%s".formatted(cdcConfig.getName(), cdcConfig.getDb(), cdcConfig.getTbl());
+        log.info("启动CDC同步任务: {}", jobName);
 
-        -- 2. 后台合并配置（核心：把小文件合并成512MB）
-        'write.merge.enabled' = 'true', -- 开启写入时合并
-        'write.merge.target-file-size-bytes' = '536870912', -- 最终合并为512MB
-        'write.merge.sort-buffer-size' = '134217728', -- 128MB排序缓存，提升合并效率
+        // 1. 初始化 Iceberg Catalog
+        Catalog icebergCatalog = createIcebergCatalog();
+        TableIdentifier tableId = TableIdentifier.of(
+                Namespace.of(cdcConfig.getDb()),
+                cdcConfig.getTbl()
+        );
 
-        -- 3. 元数据保护配置（避免合并导致metadata膨胀）
-        'metadata.delete-after-commit.enabled' = 'true',
-        'metadata.previous-versions-max' = '5', -- 只保留最近5个版本
-        'metadata.expire.snapshots.max-age-ms' = '3600000', -- 快照保留1小时
-        'write.async' = 'true' -- 异步提交，不阻塞实时写入
+        // 2. 确保 namespace 存在
+        ensureNamespaceExists(icebergCatalog, tableId.namespace());
 
-            */
-            // 往iceberg表写入数据
-            System.out.println(v);
-            return "[%s]:%s".formatted(name, v);
-        }).print();
+        // 3. 获取或创建表 Schema
+        Schema icebergSchema = getOrCreateTableSchema(icebergCatalog, tableId);
 
+        // 4. 创建 Kafka Source
+        KafkaSource<String> kafkaSource = createKafkaSource(
+                config.getKafka().getBootstrapServers(),
+                cdcConfig.getTopic(),
+                config.getKafka().getGroupIdPrefix() + "-" + jobName,
+                "earliest"
+        );
+
+        // 5. 从 Kafka 读取数据
+        DataStreamSource<String> kafkaStream = env.fromSource(
+                kafkaSource,
+                WatermarkStrategy.noWatermarks(),
+                "kafka-source-" + jobName
+        );
+
+        // 6. 解析 Debezium 事件并转换为 RowData
+        SingleOutputStreamOperator<RowData> rowDataStream = kafkaStream
+                .name("parse-debezium-" + jobName)
+                .map(new DebeziumEventMapper(icebergSchema))
+                .filter(Objects::nonNull)
+                .name("filter-valid-rows-" + jobName);
+
+        // 打印 rowDataStream 数据用于调试
+        rowDataStream.print("RowData");
+
+        // 7. 写入 Iceberg 表
+        Table table = icebergCatalog.loadTable(tableId);
+        
+        Map<String, String> catalogProps = buildCatalogProperties();
+
+        org.apache.hadoop.conf.Configuration hadoopConf = new org.apache.hadoop.conf.Configuration();
+        org.apache.iceberg.flink.CatalogLoader catalogLoader =
+                org.apache.iceberg.flink.CatalogLoader.custom(
+                        config.getIceberg().getCatalogName(),
+                        catalogProps,
+                        hadoopConf,
+                        "org.apache.iceberg.rest.RESTCatalog"
+                );
+
+
+        TableLoader tableLoader = TableLoader.fromCatalog(catalogLoader, tableId);
+
+        FlinkSink.forRowData(rowDataStream)
+                .tableLoader(tableLoader)
+                .table(table)
+                .writeParallelism(env.getParallelism())
+                .append();
+
+        log.info("CDC同步任务配置完成: {}", jobName);
     }
 
     /**
-     * 封装KafkaSource创建逻辑，避免重复代码
-     *
-     * @param brokers     Kafka broker地址
-     * @param topic       要消费的Topic
-     * @param groupId     消费组ID
-     * @param offsetReset 偏移量重置策略（latest/earliest）
-     * @return 配置好的KafkaSource
+     * 获取或创建表 Schema
+     * 如果表存在，直接使用现有 Schema
+     * 如果表不存在，从 Kafka 消费一条消息获取 Schema 并创建表
      */
+    private Schema getOrCreateTableSchema(Catalog catalog, TableIdentifier tableId) {
+        // 如果表已存在，直接使用现有 Schema
+        if (catalog.tableExists(tableId)) {
+            Schema schema = catalog.loadTable(tableId).schema();
+            log.info("使用已存在的 Iceberg 表 Schema: {}", tableId);
+            return schema;
+        }
+
+        // 表不存在，从 Kafka 消费一条消息获取 Schema
+        log.info("表不存在，从 Kafka 获取 Schema: {}", tableId);
+        
+        Properties props = new Properties();
+        props.setProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, config.getKafka().getBootstrapServers());
+        props.setProperty(ConsumerConfig.GROUP_ID_CONFIG, config.getKafka().getGroupIdPrefix() + "-schema-init");
+        props.setProperty(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.StringDeserializer");
+        props.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.StringDeserializer");
+        props.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        props.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "1");
+
+        try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
+            consumer.subscribe(Collections.singletonList(cdcConfig.getTopic()));
+            
+            // 轮询获取第一条消息
+            String firstMessage = null;
+            int maxAttempts = 30; // 最多等待30秒
+            for (int i = 0; i < maxAttempts && firstMessage == null; i++) {
+                ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(1));
+                for (ConsumerRecord<String, String> record : records) {
+                    firstMessage = record.value();
+                    log.info("获取到第一条 Kafka 消息: {}", firstMessage);
+                    break;
+                }
+            }
+            
+            if (firstMessage == null) {
+                log.warn("无法从 Kafka 获取消息，使用默认 Schema");
+                return createDefaultSchema();
+            }
+            
+            // 解析 Debezium 消息获取字段
+            DebeziumEventRecord debeziumRecord = JSONObject.parseObject(firstMessage, DebeziumEventRecord.class);
+            DebeziumEventRecord.Field[] fields = debeziumRecord.getFields();
+            
+            if (fields == null || fields.length == 0) {
+                log.warn("无法从 Debezium 消息获取字段，使用默认 Schema");
+                return createDefaultSchema();
+            }
+            
+            // 从字段创建 Schema
+            Schema schema = createSchemaFromFields(fields);
+            
+            // 创建表
+            PartitionSpec partitionSpec = PartitionSpec.unpartitioned();
+            Table table = catalog.createTable(tableId, schema, partitionSpec);
+            log.info("创建 Iceberg 表: {}, Schema: {}", tableId, schema);
+            
+            // 设置表属性
+            table.updateProperties()
+                    .set("streaming.commit-interval", "10000")
+                    .set("write.commit.manifest.min-count", "100")
+                    .set("write.filesize", "67108864")
+                    .set("write.merge.enabled", "true")
+                    .set("write.merge.target-file-size-bytes", "536870912")
+                    .set("write.merge.sort-buffer-size", "134217728")
+                    .set("metadata.delete-after-commit.enabled", "true")
+                    .set("metadata.previous-versions-max", "5")
+                    .set("metadata.expire.snapshots.max-age-ms", "3600000")
+                    .set("write.async", "true")
+                    .commit();
+            
+            return schema;
+            
+        } catch (Exception e) {
+            log.error("从 Kafka 获取 Schema 失败", e);
+            throw new RuntimeException("获取 Schema 失败", e);
+        }
+    }
+
+    /**
+     * 从 Debezium 字段创建 Iceberg Schema
+     */
+    private Schema createSchemaFromFields(DebeziumEventRecord.Field[] fields) {
+        List<Types.NestedField> nestedFields = new ArrayList<>();
+        int fieldId = 1;
+        
+        for (DebeziumEventRecord.Field field : fields) {
+            String fieldName = field.getField();
+            if (fieldName == null) {
+                continue;
+            }
+            
+            Types.NestedField nestedField = convertToIcebergField(field, fieldId++);
+            if (nestedField != null) {
+                nestedFields.add(nestedField);
+            }
+        }
+        
+        return new Schema(nestedFields);
+    }
+
+    /**
+     * 转换 Debezium 字段为 Iceberg 字段
+     */
+    private Types.NestedField convertToIcebergField(DebeziumEventRecord.Field field, int fieldId) {
+        String fieldName = field.getField();
+        String type = field.getType();
+        boolean optional = field.isOptional();
+        
+        return switch (type.toLowerCase()) {
+            case "string" -> optional ? 
+                Types.NestedField.optional(fieldId, fieldName, Types.StringType.get()) :
+                Types.NestedField.required(fieldId, fieldName, Types.StringType.get());
+            case "int16" -> optional ?
+                Types.NestedField.optional(fieldId, fieldName, Types.IntegerType.get()) :
+                Types.NestedField.required(fieldId, fieldName, Types.IntegerType.get());
+            case "int32" -> optional ?
+                Types.NestedField.optional(fieldId, fieldName, Types.IntegerType.get()) :
+                Types.NestedField.required(fieldId, fieldName, Types.IntegerType.get());
+            case "int64" -> optional ?
+                Types.NestedField.optional(fieldId, fieldName, Types.LongType.get()) :
+                Types.NestedField.required(fieldId, fieldName, Types.LongType.get());
+            case "float" -> optional ?
+                Types.NestedField.optional(fieldId, fieldName, Types.FloatType.get()) :
+                Types.NestedField.required(fieldId, fieldName, Types.FloatType.get());
+            case "double" -> optional ?
+                Types.NestedField.optional(fieldId, fieldName, Types.DoubleType.get()) :
+                Types.NestedField.required(fieldId, fieldName, Types.DoubleType.get());
+            case "boolean" -> optional ?
+                Types.NestedField.optional(fieldId, fieldName, Types.BooleanType.get()) :
+                Types.NestedField.required(fieldId, fieldName, Types.BooleanType.get());
+            case "bytes" -> optional ?
+                Types.NestedField.optional(fieldId, fieldName, Types.BinaryType.get()) :
+                Types.NestedField.required(fieldId, fieldName, Types.BinaryType.get());
+            default -> optional ?
+                Types.NestedField.optional(fieldId, fieldName, Types.StringType.get()) :
+                Types.NestedField.required(fieldId, fieldName, Types.StringType.get());
+        };
+    }
+
+    /**
+     * 创建默认 Schema
+     */
+    private Schema createDefaultSchema() {
+        return new Schema(
+                Types.NestedField.optional(1, "data", Types.StringType.get())
+        );
+    }
+
+    /**
+     * 确保 namespace 存在
+     */
+    private void ensureNamespaceExists(Catalog catalog, Namespace namespace) {
+        try {
+            if (catalog instanceof SupportsNamespaces supportsNamespaces) {
+                if (!supportsNamespaces.namespaceExists(namespace)) {
+                    supportsNamespaces.createNamespace(namespace);
+                    log.info("创建 namespace: {}", namespace);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("创建 namespace 失败，可能已存在: {}", namespace, e);
+        }
+    }
+
+    /**
+     * Debezium 事件映射器（可序列化）
+     */
+    public static class DebeziumEventMapper extends RichMapFunction<String, RowData> implements Serializable {
+        private static final long serialVersionUID = 1L;
+        
+        private final Schema schema;
+        private transient org.slf4j.Logger log;
+        
+        public DebeziumEventMapper(Schema schema) {
+            this.schema = schema;
+        }
+
+        @Override
+        public void open(org.apache.flink.api.common.functions.OpenContext openContext) {
+            this.log = org.slf4j.LoggerFactory.getLogger(DebeziumEventMapper.class);
+        }
+
+        @Override
+        public RowData map(String json) {
+            try {
+                DebeziumEventRecord record = JSONObject.parseObject(json, DebeziumEventRecord.class);
+                if (record == null) {
+                    log.debug("record is null");
+                    return null;
+                }
+                if (record.getPayload() == null) {
+                    log.debug("payload is null");
+                    return null;
+                }
+
+                DebeziumEventRecord.Payload payload = record.getPayload();
+                String op = payload.getOp();
+                log.debug("op: {}", op);
+
+                DebeziumEventRecord.Field[] fields = record.getFields();
+                if (fields == null || fields.length == 0) {
+                    log.warn("fields is null or empty, schema.name: {}", 
+                        record.getSchema() != null ? record.getSchema().getName() : "null");
+                    return null;
+                }
+                log.debug("fields count: {}", fields.length);
+
+                Map<String, Object> data = switch (op) {
+                    case "c" -> payload.getAfter();
+                    case "u" -> payload.getAfter();
+                    case "d" -> payload.getBefore();
+                    case "r" -> payload.getAfter();
+                    default -> null;
+                };
+
+                if (data == null) {
+                    log.debug("data is null for op: {}", op);
+                    return null;
+                }
+                log.debug("data keys: {}", data.keySet());
+
+                RowData rowData = createRowData(fields, data, op, schema);
+                log.debug("created rowData: {}", rowData);
+                return rowData;
+            } catch (Exception e) {
+                log.error("parse error: {}", e.getMessage(), e);
+                return null;
+            }
+        }
+
+        private RowData createRowData(DebeziumEventRecord.Field[] fields, Map<String, Object> data, String op, Schema schema) {
+            List<Types.NestedField> schemaFields = schema.columns();
+            GenericRowData rowData = new GenericRowData(schemaFields.size());
+
+            rowData.setRowKind(switch (op) {
+                case "c", "r" -> RowKind.INSERT;
+                case "u" -> RowKind.UPDATE_AFTER;
+                case "d" -> RowKind.DELETE;
+                default -> RowKind.INSERT;
+            });
+
+            // 构建 字段名 -> 类型 的映射
+            Map<String, String> fieldTypeMap = new HashMap<>();
+            for (DebeziumEventRecord.Field field : fields) {
+                if (field.getField() != null) {
+                    fieldTypeMap.put(field.getField(), field.getType());
+                }
+            }
+
+            // 按 Schema 字段顺序填充数据
+            int index = 0;
+            for (Types.NestedField schemaField : schemaFields) {
+                String fieldName = schemaField.name();
+                String fieldType = fieldTypeMap.get(fieldName);
+                Object value = data.get(fieldName);
+                rowData.setField(index++, convertValue(value, fieldType));
+            }
+
+            return rowData;
+        }
+
+        private Object convertValue(Object value, String type) {
+            if (value == null) {
+                return null;
+            }
+
+            if (type == null) {
+                return StringData.fromString(value.toString());
+            }
+
+            return switch (type.toLowerCase()) {
+                case "string" -> StringData.fromString(value.toString());
+                case "int16", "int32" -> {
+                    if (value instanceof Number num) {
+                        yield num.intValue();
+                    }
+                    yield Integer.parseInt(value.toString());
+                }
+                case "int64" -> {
+                    if (value instanceof Number num) {
+                        yield num.longValue();
+                    }
+                    yield Long.parseLong(value.toString());
+                }
+                case "float" -> {
+                    if (value instanceof Number num) {
+                        yield num.floatValue();
+                    }
+                    yield Float.parseFloat(value.toString());
+                }
+                case "double" -> {
+                    if (value instanceof Number num) {
+                        yield num.doubleValue();
+                    }
+                    yield Double.parseDouble(value.toString());
+                }
+                case "boolean" -> {
+                    if (value instanceof Boolean bool) {
+                        yield bool;
+                    }
+                    yield Boolean.parseBoolean(value.toString());
+                }
+                case "bytes" -> {
+                    if (value instanceof byte[] bytes) {
+                        yield bytes;
+                    }
+                    yield value.toString().getBytes();
+                }
+                default -> StringData.fromString(value.toString());
+            };
+        }
+    }
+
+    private Catalog createIcebergCatalog() {
+        RESTCatalog catalog = new RESTCatalog();
+        Map<String, String> catalogProperties = buildCatalogProperties();
+        catalog.initialize(config.getIceberg().getCatalogName(), catalogProperties);
+        
+        return catalog;
+    }
+
+    private Map<String, String> buildCatalogProperties() {
+        Map<String, String> properties = new HashMap<>();
+        
+        properties.put("uri", config.getIceberg().getCatalogUri());
+        properties.put("io-impl", "org.apache.iceberg.aws.s3.S3FileIO");
+        properties.put("s3.endpoint", config.getS3().getEndpoint());
+        properties.put("s3.access-key-id", config.getS3().getAccessKey());
+        properties.put("s3.secret-access-key", config.getS3().getSecretKey());
+        properties.put("s3.region", config.getS3().getRegion());
+        properties.put("s3.path-style-access", "true");
+        
+        return properties;
+    }
+
     private static KafkaSource<String> createKafkaSource(
             String brokers,
             String topic,
             String groupId,
             String offsetReset) {
 
-        // 配置Kafka消费者参数
         Properties kafkaProps = new Properties();
         kafkaProps.setProperty("bootstrap.servers", brokers);
         kafkaProps.setProperty("group.id", groupId);
-        // 可选：添加更多消费参数（如超时、重试等）
         kafkaProps.setProperty("fetch.max.wait.ms", "500");
         kafkaProps.setProperty("max.poll.records", "100");
 
-        // 构建KafkaSource
-        KafkaSource<String> kafkaSource = KafkaSource.<String>builder()
+        return KafkaSource.<String>builder()
                 .setProperties(kafkaProps)
                 .setTopics(topic)
-                // 设置偏移量初始值
                 .setStartingOffsets(
                         "latest".equals(offsetReset) ?
                                 OffsetsInitializer.latest() :
                                 OffsetsInitializer.earliest()
                 )
-                .setValueOnlyDeserializer(new SimpleStringSchema())  // 字符串反序列化（可替换为自定义Schema）
+                .setValueOnlyDeserializer(new SimpleStringSchema())
                 .build();
-
-        return kafkaSource;
     }
 }

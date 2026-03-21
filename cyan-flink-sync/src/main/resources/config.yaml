@@ -19,7 +19,7 @@ flink:
   job-manager-url: http://flink.cyan.com/
   sql-gateway-url: http://flink-sql-gateway.cyan.com/
   parallelism: 1
-  checkpoint-interval: 60000
+  checkpoint-interval: 10000
   checkpoint-dir: s3://flink/checkpoints
 
 # S3配置（RustFS）
@@ -33,8 +33,7 @@ s3:
 # Iceberg配置
 iceberg:
   catalog-type: rest
-  # Gravitino REST Catalog URI 格式: http://host/iceberg/{metalake}/{catalog}/v1
-  # 例如: http://iceberg-gravitino.cyan.com/iceberg/my_metalake/my_catalog/v1
+  # 独立的 Iceberg REST Catalog 服务
   catalog-uri: http://iceberg-gravitino.cyan.com/iceberg
   catalog-name: iceberg
   default-database: cdc_db

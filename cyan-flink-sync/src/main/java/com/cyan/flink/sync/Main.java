@@ -44,11 +44,21 @@ public class Main {
         // 3. 构建 Flink Job
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(cdcSyncConfig.getFlink().getParallelism());
-        env.enableCheckpointing(cdcSyncConfig.getFlink().getCheckpointInterval());
-
+        
+        // 启用 checkpoint（Iceberg 写入必须依赖 checkpoint commit）
+        long checkpointInterval = cdcSyncConfig.getFlink().getCheckpointInterval();
+        env.enableCheckpointing(checkpointInterval > 0 ? checkpointInterval : 10000); // 默认 10 秒
+        
+        // 配置 checkpoint storage（本地调试用）
+        env.getCheckpointConfig().setCheckpointStorage("file:///tmp/flink-checkpoints");
+        
         // 本地调试时增加超时时间
         env.getCheckpointConfig().setCheckpointTimeout(600000); // 10分钟
         env.getCheckpointConfig().setTolerableCheckpointFailureNumber(3);
+        
+        // 确保 checkpoint 完成
+        env.getCheckpointConfig().setMinPauseBetweenCheckpoints(500);
+        env.getCheckpointConfig().setMaxConcurrentCheckpoints(1);
 
         //创建对应的同步任务
         for (CdcConfigDTO config : configs) {
@@ -65,7 +75,7 @@ public class Main {
         ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
 
         try {
-            InputStream is = CdcSyncApplication.class.getClassLoader()
+            InputStream is = Main.class.getClassLoader()
                     .getResourceAsStream("config.yaml");
             if (is != null) {
                 return mapper.readValue(is, CdcSyncConfig.class);

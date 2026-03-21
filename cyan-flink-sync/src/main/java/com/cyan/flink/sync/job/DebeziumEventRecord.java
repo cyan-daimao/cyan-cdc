@@ -25,9 +25,13 @@ public class DebeziumEventRecord implements Serializable {
 
 
     public Field[] getFields() {
+        if (this.schema == null || this.schema.fields == null) {
+            return null;
+        }
+        
+        // 遍历 schema.fields，找到 field 属性为 "after" 的字段
         for (Field field : this.schema.fields) {
-            String name = this.schema.name.substring(0, this.schema.name.lastIndexOf("."));
-            if (field.getName().contains(name) && "after".equals(field.getField())){
+            if ("after".equals(field.getField()) && field.getFields() != null) {
                 return field.getFields();
             }
         }
