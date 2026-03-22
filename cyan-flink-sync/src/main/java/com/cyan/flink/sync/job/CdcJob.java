@@ -6,15 +6,11 @@ import com.cyan.flink.sync.rpc.CdcConfigDTO;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.RichMapFunction;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
-import org.apache.flink.configuration.Configuration;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
-import org.apache.flink.streaming.api.datastream.DataStreamSink;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.table.api.TableResult;
-import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.data.GenericRowData;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.data.StringData;
@@ -30,10 +26,7 @@ import org.apache.iceberg.flink.TableLoader;
 import org.apache.iceberg.flink.sink.FlinkSink;
 import org.apache.iceberg.rest.RESTCatalog;
 import org.apache.iceberg.types.Types;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -79,11 +72,12 @@ public class CdcJob {
         Schema icebergSchema = getOrCreateTableSchema(icebergCatalog, tableId);
 
         // 4. 创建 Kafka Source
+        // 使用 committedOffsets 从上次提交的位置继续消费，避免重复
         KafkaSource<String> kafkaSource = createKafkaSource(
                 config.getKafka().getBootstrapServers(),
                 cdcConfig.getTopic(),
                 config.getKafka().getGroupIdPrefix() + "-" + jobName,
-                "earliest"
+                "committed"  // 使用已提交的 offset
         );
 
         // 5. 从 Kafka 读取数据
@@ -510,15 +504,24 @@ public class CdcJob {
         kafkaProps.setProperty("group.id", groupId);
         kafkaProps.setProperty("fetch.max.wait.ms", "500");
         kafkaProps.setProperty("max.poll.records", "100");
+        // 启用自动提交 offset（作为备份，主要靠 checkpoint）
+        kafkaProps.setProperty("enable.auto.commit", "true");
+        kafkaProps.setProperty("auto.commit.interval.ms", "5000");
+        // 当没有已提交 offset 时的行为
+        kafkaProps.setProperty("auto.offset.reset", "earliest");
+
+        // 根据配置决定起始位置
+        OffsetsInitializer startingOffsets = switch (offsetReset.toLowerCase()) {
+            case "latest" -> OffsetsInitializer.latest();
+            case "earliest" -> OffsetsInitializer.earliest();
+            default -> OffsetsInitializer.committedOffsets(OffsetResetStrategy.EARLIEST);
+            // committedOffsets 参数：如果没有已提交的 offset，则从 earliest 开始
+        };
 
         return KafkaSource.<String>builder()
                 .setProperties(kafkaProps)
                 .setTopics(topic)
-                .setStartingOffsets(
-                        "latest".equals(offsetReset) ?
-                                OffsetsInitializer.latest() :
-                                OffsetsInitializer.earliest()
-                )
+                .setStartingOffsets(startingOffsets)
                 .setValueOnlyDeserializer(new SimpleStringSchema())
                 .build();
     }

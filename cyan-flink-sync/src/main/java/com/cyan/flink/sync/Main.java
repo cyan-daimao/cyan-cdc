@@ -1,5 +1,7 @@
 package com.cyan.flink.sync;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
 import com.alibaba.fastjson2.JSON;
 import com.cy.easyhttp.HttpClientProxyFactory;
 import com.cyan.flink.sync.config.CdcSyncConfig;
@@ -9,7 +11,6 @@ import com.cyan.flink.sync.rpc.CyanCdcRPC;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.InputStream;
@@ -24,12 +25,29 @@ import java.util.Optional;
  */
 public class Main {
 
-    private static final Logger log = LoggerFactory.getLogger(Main.class);
+    private static final org.slf4j.Logger log = LoggerFactory.getLogger(Main.class);
 
     public static void main(String[] args) throws Exception {
+        // 配置日志级别，关闭 DEBUG 日志
+        configureLogging();
+        
         log.info("CDC同步应用程序启动");
         CdcSyncConfig cdcSyncConfig = loadConfig();
         start(cdcSyncConfig);
+    }
+
+    /**
+     * 配置日志级别
+     */
+    private static void configureLogging() {
+        // 关闭 Kafka DEBUG 日志
+        ((Logger) LoggerFactory.getLogger("org.apache.kafka")).setLevel(Level.WARN);
+        // 关闭 Flink DEBUG 日志  
+        ((Logger) LoggerFactory.getLogger("org.apache.flink")).setLevel(Level.INFO);
+        // 关闭 Kryo 序列化警告
+        ((Logger) LoggerFactory.getLogger("org.apache.flink.api.java.typeutils.runtime.kryo")).setLevel(Level.ERROR);
+        // 关闭 Iceberg DEBUG 日志
+        ((Logger) LoggerFactory.getLogger("org.apache.iceberg")).setLevel(Level.INFO);
     }
 
     /**
