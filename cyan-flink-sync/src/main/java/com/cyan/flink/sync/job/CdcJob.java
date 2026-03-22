@@ -77,7 +77,7 @@ public class CdcJob {
                 config.getKafka().getBootstrapServers(),
                 cdcConfig.getTopic(),
                 config.getKafka().getGroupIdPrefix() + "-" + jobName,
-                "committed"  // 使用已提交的 offset
+                "earliest"  // 使用已提交的 offset
         );
 
         // 5. 从 Kafka 读取数据
