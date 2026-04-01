@@ -4,7 +4,7 @@ spring:
   cloud:
     nacos:
       # 通用配置（配置中心和注册中心可共享）
-      server-addr: 10.0.0.2:18848  # Nacos服务器地址
+      server-addr: 10.0.0.2:8848  # Nacos服务器地址
       username: nacos  # Nacos登录账号
       password: nacos  # Nacos登录密码
       # 配置中心专项配置
@@ -18,7 +18,7 @@ spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: root
-    password: 627459859@qq.com
+    password: 123456
     url: jdbc:mysql://10.0.0.2:3306/cyan_cdc
 
 kafka:

@@ -28,14 +28,6 @@
         <dependencies>
             <dependency>
                 <groupId>com.cyan</groupId>
-                <artifactId>cyan-bigdata</artifactId>
-                <version>${cyan-bigdata-base.version}</version>
-                <scope>import</scope>
-                <type>pom</type>
-            </dependency>
-
-            <dependency>
-                <groupId>com.cyan</groupId>
                 <artifactId>arch</artifactId>
                 <version>${arch.version}</version>
                 <type>pom</type>
@@ -108,13 +100,13 @@
         <repository>
             <id>maven-releases</id>
             <name>Nexus Releases Repository</name>
-            <url>http://10.0.0.2:20010/repository/maven-releases/</url>
+            <url>http://nexus.cyan.com/repository/maven-releases/</url>
         </repository>
         <!-- 快照版仓库（对应Nexus的maven-snapshots） -->
         <snapshotRepository>
             <id>maven-snapshots</id>
             <name>Nexus Snapshots Repository</name>
-            <url>http://10.0.0.2:20010/repository/maven-snapshots/</url>
+            <url>http://nexus.cyan.com/repository/maven-snapshots/</url>
         </snapshotRepository>
     </distributionManagement>
 </project>
