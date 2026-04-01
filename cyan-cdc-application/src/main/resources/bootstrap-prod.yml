@@ -1,0 +1,38 @@
+spring:
+  config:
+    import: "nacos:cyan-dataman.yaml?group=DEFAULT_GROUP&namespace=prod"
+  cloud:
+    nacos:
+      # 通用配置（配置中心和注册中心可共享）
+      server-addr: 10.0.0.2:8848  # Nacos服务器地址
+      username: nacos  # Nacos登录账号
+      password: nacos  # Nacos登录密码
+      # 配置中心专项配置
+      config:
+        file-extension: yaml
+        namespace: prod
+      # 注册中心专项配置
+      discovery:
+        ephemeral: true
+        namespace: prod
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: root
+    password: 123456
+    url: jdbc:mysql://10.0.0.2:3306/cyan_cdc
+
+kafka:
+  url: 10.0.0.2:9092
+
+flink:
+  jobmanager:
+    url: http://flink.cyan.com/
+  sqlgateway:
+    url: http://flink-sql-gateway.cyan.com/
+cdc:
+  s3:
+    endpoint: http://rustfs.cyan.com
+    access-key: rustfsadmin
+    secret-key: rustfsadmin
+  restcatalog:
+    url: http://iceberg-gravitino.cyan.com/iceberg
