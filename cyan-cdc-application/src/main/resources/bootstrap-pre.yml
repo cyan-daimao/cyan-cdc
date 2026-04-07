@@ -1,6 +1,6 @@
 spring:
   config:
-    import: "nacos:cyan-dataman.yaml?group=DEFAULT_GROUP&namespace=dev"
+    import: "nacos:cyan-dataman.yaml?group=DEFAULT_GROUP&namespace=pre"
   cloud:
     nacos:
       # 通用配置（配置中心和注册中心可共享）
@@ -10,11 +10,11 @@ spring:
       # 配置中心专项配置
       config:
         file-extension: yaml
-        namespace: dev
+        namespace: pre
       # 注册中心专项配置
       discovery:
         ephemeral: true
-        namespace: dev
+        namespace: pre
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: root
@@ -31,8 +31,8 @@ flink:
     url: http://flink-sql-gateway.cyan.com/
 cdc:
   s3:
-    endpoint: http://rustfs.cyan.com
+    endpoint: http://10.0.0.2:9090
     access-key: rustfsadmin
     secret-key: rustfsadmin
   restcatalog:
-    url: http://iceberg-gravitino.cyan.com/iceberg
+    url: http://gravitino-iceberg-rest-server.gravitino.svc.cluster.local:9001/iceberg
