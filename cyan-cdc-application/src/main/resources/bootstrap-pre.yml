@@ -31,8 +31,8 @@ flink:
     url: http://flink-sql-gateway.cyan.com/
 cdc:
   s3:
-    endpoint: http://rustfs.cyan.com
+    endpoint: http://10.0.0.2:9090
     access-key: rustfsadmin
     secret-key: rustfsadmin
   restcatalog:
-    url: http://iceberg-gravitino.cyan.com/iceberg
+    url: http://gravitino-iceberg-rest-server.gravitino.svc.cluster.local:9001/iceberg
