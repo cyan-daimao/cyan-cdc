@@ -1,6 +1,8 @@
 spring:
   config:
-    import: "nacos:cyan-dataman.yaml?group=DEFAULT_GROUP&namespace=dev"
+    import:
+      - "nacos:arch-base.yaml?group=DEFAULT_GROUP&namespace=dev"
+      - "nacos:cyan-dataman.yaml?group=DEFAULT_GROUP&namespace=dev"
   cloud:
     nacos:
       # 通用配置（配置中心和注册中心可共享）
@@ -35,4 +37,4 @@ cdc:
     access-key: rustfsadmin
     secret-key: rustfsadmin
   restcatalog:
-    url: http://iceberg-gravitino.cyan.com/iceberg
+    url: http://iceberg-rest.cyan.com/iceberg
