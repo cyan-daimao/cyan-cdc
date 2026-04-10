@@ -44,6 +44,7 @@ public class CdcConfigCmdServiceImpl implements CdcConfigCmdService {
      * 保存数据源信息
      */
     @Override
+    @Transactional
     public CdcConfigBO save(CDCConfigCmd cmd) {
         CdcConfig cdcConfig = CdcConfigAppConvert.INSTANCE.toDatasourceInfo(cmd);
         cdcConfig = cdcConfig.save(cdcConfigRepository);

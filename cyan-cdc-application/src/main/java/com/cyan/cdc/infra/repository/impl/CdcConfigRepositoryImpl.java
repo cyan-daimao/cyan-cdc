@@ -55,11 +55,7 @@ public class CdcConfigRepositoryImpl implements CdcConfigRepository {
         cdcConfig.setEnabled(true);
 
         // 查询该数据源是否已存在配置
-        List<CdcConfig> existingConfigs = listByDatasource(
-                cdcConfig.getHostname(),
-                cdcConfig.getPort(),
-                cdcConfig.getUsername()
-        );
+        List<CdcConfig> existingConfigs = listByDatasource(cdcConfig.getHostname(), cdcConfig.getPort(), cdcConfig.getUsername());
 
         CdcConfigDO cdcConfigDO = CdcConfigInfraConvert.INSTANCE.toCdcConfigDO(cdcConfig);
         cdcConfigDO.setRunningStatus(RunningStatus.RUNNING);
@@ -90,9 +86,7 @@ public class CdcConfigRepositoryImpl implements CdcConfigRepository {
             cdcConfig.setId(cdcConfigDO.getId() + "");
             String databaseIncludeList = cdcConfig.getDb();
             String tableIncludeList = cdcConfig.getDb() + "." + cdcConfig.getTbl();
-            Object connector = debeziumRPC.createConnector(
-                    CdcConfigInfraConvert.INSTANCE.toConnectorSaveRequest(cdcConfig, kafkaUrl, databaseIncludeList, tableIncludeList)
-            );
+            Object connector = debeziumRPC.createConnector(CdcConfigInfraConvert.INSTANCE.toConnectorSaveRequest(cdcConfig, kafkaUrl, databaseIncludeList, tableIncludeList));
             log.info("debezium连接器创建成功: {}", JSON.toJSONString(connector));
         } else {
             CdcConfig existingConfig = existingConfigs.getFirst();
